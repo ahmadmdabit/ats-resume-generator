@@ -1,7 +1,7 @@
 {
   "name": "ats-resume-generator",
-  "version": "1.0.0",
-  "description": "Generates Ahmet FATIHOGLU's Resume using docx@9.7.1",
+  "version": "2.0.0",
+  "description": "SOLID Resume Generator (MD/JSON -> MD/DOCX/PDF)",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
@@ -9,12 +9,13 @@
     "generate": "ts-node src/index.ts"
   },
   "dependencies": {
-    "docx": "9.7.1"
+    "docx": "9.7.1",
+    "marked": "18.0.5",
+    "pdfjs": "2.5.4"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
-  },
-  "packageManager": "yarn@4.17.0"
+  }
 }
