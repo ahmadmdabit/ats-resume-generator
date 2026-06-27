@@ -8,13 +8,28 @@ A command-line tool that parses resume data from **Markdown** or **JSON** and ge
 
 No Node.js or development tools required. Download a standalone binary for your OS — it's a single file, ready to run.
 
-| Platform                        | Binary                                 |
-| ------------------------------- | -------------------------------------- |
-| **Windows** (x64)               | `ats-resume-generator-windows-x64.exe` |
-| **Linux** (x64)                 | `ats-resume-generator-linux-x64`       |
-| **Linux** (ARM64)               | `ats-resume-generator-linux-arm64`     |
-| **macOS** (Apple Silicon / M1+) | `ats-resume-generator-darwin-arm64`    |
-| **macOS** (Intel)               | `ats-resume-generator-darwin-x64`      |
+### Download Latest Release
+
+Each platform has a standalone binary and a compressed archive. Windows uses `.zip`; Linux and macOS use `.tar.gz`. SHA-256 checksums are provided for every file.
+
+| Platform                        | Archives                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Windows** (x64)               | [`ats-resume-generator-windows-x64.exe`](https://github.com/ahmadmdabit/ats-resume-generator/releases/latest/download/ats-resume-generator-windows-x64.exe) · [`ats-resume-generator-windows-x64.zip`](https://github.com/ahmadmdabit/ats-resume-generator/releases/latest/download/ats-resume-generator-windows-x64.zip)   |
+| **Linux** (x64)                 | [`ats-resume-generator-linux-x64`](https://github.com/ahmadmdabit/ats-resume-generator/releases/latest/download/ats-resume-generator-linux-x64) · [`ats-resume-generator-linux-x64.tar.gz`](https://github.com/ahmadmdabit/ats-resume-generator/releases/latest/download/ats-resume-generator-linux-x64.tar.gz)             |
+| **Linux** (ARM64)               | [`ats-resume-generator-linux-arm64`](https://github.com/ahmadmdabit/ats-resume-generator/releases/latest/download/ats-resume-generator-linux-arm64) · [`ats-resume-generator-linux-arm64.tar.gz`](https://github.com/ahmadmdabit/ats-resume-generator/releases/latest/download/ats-resume-generator-linux-arm64.tar.gz)     |
+| **macOS** (Apple Silicon / M1+) | [`ats-resume-generator-darwin-arm64`](https://github.com/ahmadmdabit/ats-resume-generator/releases/latest/download/ats-resume-generator-darwin-arm64) · [`ats-resume-generator-darwin-arm64.tar.gz`](https://github.com/ahmadmdabit/ats-resume-generator/releases/latest/download/ats-resume-generator-darwin-arm64.tar.gz) |
+| **macOS** (Intel)               | [`ats-resume-generator-darwin-x64`](https://github.com/ahmadmdabit/ats-resume-generator/releases/latest/download/ats-resume-generator-darwin-x64) · [`ats-resume-generator-darwin-x64.tar.gz`](https://github.com/ahmadmdabit/ats-resume-generator/releases/latest/download/ats-resume-generator-darwin-x64.tar.gz)         |
+
+See the [full changelog](https://github.com/ahmadmdabit/ats-resume-generator/releases/latest) on GitHub Releases for version history and release notes.
+
+> **💡 Tip: Use the compressed archive to avoid OS security warnings.**
+> When you download a raw executable (`.exe`, or a binary with no extension), your operating system may show a security warning because the file isn't digitally signed:
+>
+> - **Windows SmartScreen** — "Windows protected your PC" / "Unrecognized app"
+> - **macOS Gatekeeper** — "cannot be opened because the developer cannot be verified"
+> - **Linux browsers** — may flag the download as potentially unsafe
+>
+> **The compressed archives (`.zip` / `.tar.gz`) bypass these warnings** because the OS sees them as regular archive files, not executables. Download the archive, extract it, and run the binary inside. On Windows, you may still need to right-click the `.exe` → **Properties** → check **"Unblock"** → **OK** the first time. On macOS, if you still see a warning after extracting, open **System Settings → Privacy & Security** and click **"Open Anyway"**.
 
 PDF generation requires the `docx-to-pdf.wasm` file to be placed next to the executable. This file is bundled automatically when building with `yarn package`.
 
