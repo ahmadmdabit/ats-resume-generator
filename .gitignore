@@ -1,7 +1,7 @@
 .yarn
-node_modules
 dist/
-
+build/
+node_modules
 
 *.docx
 *.pdf

@@ -7,12 +7,15 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "generate": "ts-node src/index.ts"
+    "generate": "ts-node src/index.ts",
+    "package": "node scripts/package.js --all --outdir ./build/Release",
+    "package:windows": "node scripts/package.js --windows-x64"
   },
   "dependencies": {
     "docx": "9.7.1",
     "docx-to-pdf-wasm": "^0.1.0",
-    "marked": "18.0.5"
+    "marked": "18.0.5",
+    "promisify-child-process": "^5.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
