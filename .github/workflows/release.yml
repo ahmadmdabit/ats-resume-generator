@@ -1,0 +1,152 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUNVERSION: "1.3.14"
+  NODEVERSION: "22.14.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-package:
+    name: Build & Package
+    # Only build when CI succeeded on a push event (tags are pushed, not merged)
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODEVERSION }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUNVERSION }}
+
+      - name: Enable Corepack for Yarn 4
+        run: |
+          corepack enable
+          yarn --version
+
+      - name: Get Yarn cache directory
+        id: yarn-cache-dir
+        run: echo "dir=$(yarn config get cacheFolder)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Yarn dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.yarn-cache-dir.outputs.dir }}
+          key: ${{ runner.os }}-yarn-${{ hashFiles('yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build TypeScript
+        run: yarn build
+
+      - name: Package standalone binaries all platforms
+        run: yarn package
+
+      - name: Compress release assets
+        working-directory: ./build/Release
+        run: |
+          for file in *; do
+            [ -f "$file" ] || continue
+            [[ "$file" == *.sha256 ]] && continue
+            [[ "$file" == *.zip ]] && continue
+            [[ "$file" == *.tar.gz ]] && continue
+            if [[ "$file" == *.exe ]]; then
+              zip "${file%.exe}.zip" "$file"
+            else
+              tar -czf "${file}.tar.gz" "$file"
+            fi
+          done
+
+      - name: Generate checksums
+        working-directory: ./build/Release
+        run: |
+          for file in *; do
+            [ -f "$file" ] || continue
+            [[ "$file" == *.sha256 ]] && continue
+            sha256sum "$file" > "$file.sha256"
+          done
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ats-resume-generator-binaries
+          path: build/Release/*
+          if-no-files-found: error
+          retention-days: 5
+
+  create-release:
+    name: Create GitHub Release
+    needs: build-and-package
+    # Gate on push events (tags trigger push events); skip PR-triggered CI runs
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ats-resume-generator-binaries
+          path: ./build/Release
+
+      - name: List release assets
+        run: ls -lh ./build/Release
+
+      - name: Resolve tag name
+        id: tag
+        run: |
+          # When triggered by workflow_run, extract tag from the head SHA
+          TAG=$(git tag --points-at HEAD | grep '^v' | sort -V | tail -1)
+          if [ -z "$TAG" ]; then
+            TAG="${{ github.ref_name }}"
+          fi
+          echo "name=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          TAG="${{ steps.tag.outputs.name }}"
+          PREV_TAG=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            echo "Changes since $PREV_TAG:" > changelog.md
+            echo "" >> changelog.md
+            git log "$PREV_TAG..$TAG" --pretty=format:"- %s (%h)" >> changelog.md
+          else
+            echo "Initial release." > changelog.md
+          fi
+          echo "" >> changelog.md
+          echo "Full changelog: https://github.com/${{ github.repository }}/commits/$TAG" >> changelog.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: Release ${{ steps.tag.outputs.name }}
+          body_path: changelog.md
+          draft: false
+          prerelease: ${{ contains(steps.tag.outputs.name, '-') }}
+          files: ./build/Release/*

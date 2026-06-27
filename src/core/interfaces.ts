@@ -1,4 +1,4 @@
-import { ResumeData } from './models';
+import { ResumeData } from './models.js';
 
 // Interface Segregation Principle (ISP)
 export interface IResumeParser {

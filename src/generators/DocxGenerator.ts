@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ExternalHyperlink, ShadingType, convertInchesToTwip, UnderlineType } from "docx";
-import { IResumeGenerator } from '../core/interfaces';
-import { ResumeData } from '../core/models';
+import { IResumeGenerator } from '../core/interfaces.js';
+import { ResumeData } from '../core/models.js';
 
 export class DocxGenerator implements IResumeGenerator {
     async generate(data: ResumeData, outputPath: string): Promise<void> {

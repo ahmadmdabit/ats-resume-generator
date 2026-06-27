@@ -1,5 +1,5 @@
-import { IResumeParser } from '../core/interfaces';
-import { ResumeData } from '../core/models';
+import { IResumeParser } from '../core/interfaces.js';
+import { ResumeData } from '../core/models.js';
 
 export class JsonParser implements IResumeParser {
     parse(input: string): ResumeData {

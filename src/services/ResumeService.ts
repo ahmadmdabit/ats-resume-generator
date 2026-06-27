@@ -1,4 +1,4 @@
-import { IResumeParser, IResumeGenerator } from '../core/interfaces';
+import { IResumeParser, IResumeGenerator } from '../core/interfaces.js';
 
 // Dependency Inversion Principle (DIP): Depends on abstractions
 export class ResumeService {

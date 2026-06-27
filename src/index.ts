@@ -1,16 +1,17 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { ResumeService } from './services/ResumeService';
-import { MarkdownParser } from './parsers/MarkdownParser';
-import { JsonParser } from './parsers/JsonParser';
-import { DocxGenerator } from './generators/DocxGenerator';
-import { PdfGenerator } from './generators/PdfGenerator';
-import { MarkdownGenerator } from './generators/MarkdownGenerator';
-import { IResumeParser, IResumeGenerator } from './core/interfaces';
+import { ResumeService } from './services/ResumeService.js';
+import { MarkdownParser } from './parsers/MarkdownParser.js';
+import { JsonParser } from './parsers/JsonParser.js';
+import { DocxGenerator } from './generators/DocxGenerator.js';
+import { PdfGenerator } from './generators/PdfGenerator.js';
+import { TxtGenerator } from './generators/TxtGenerator.js';
+import { MarkdownGenerator } from './generators/MarkdownGenerator.js';
+import { IResumeParser, IResumeGenerator } from './core/interfaces.js';
 
 const args = process.argv.slice(2);
 if (args.length < 2) {
-    console.log('Usage: node dist/index.js <input.(md|json)> <output.(md|docx|pdf)>');
+    console.log('Usage: node dist/index.js <input.(md|json)> <output.(md|docx|pdf|txt)>');
     process.exit(1);
 }
 
@@ -32,7 +33,8 @@ let generator: IResumeGenerator;
 if (outputExt === '.docx') generator = new DocxGenerator();
 else if (outputExt === '.pdf') generator = new PdfGenerator();
 else if (outputExt === '.md') generator = new MarkdownGenerator();
-else { console.error('❌ Unsupported output format. Use .md, .docx, or .pdf'); process.exit(1); }
+else if (outputExt === '.txt') generator = new TxtGenerator();
+else { console.error('❌ Unsupported output format. Use .md, .docx, .pdf, or .txt'); process.exit(1); }
 
 const service = new ResumeService(parser, generator);
 const inputContent = fs.readFileSync(inputPath, 'utf-8');

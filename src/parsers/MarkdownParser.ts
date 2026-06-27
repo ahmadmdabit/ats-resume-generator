@@ -1,6 +1,6 @@
 import { marked, Tokens } from 'marked';
-import { IResumeParser } from '../core/interfaces';
-import { ResumeData, ResumeJob, ResumeProject } from '../core/models';
+import { IResumeParser } from '../core/interfaces.js';
+import { ResumeData, ResumeJob, ResumeProject } from '../core/models.js';
 
 export class MarkdownParser implements IResumeParser {
     private readonly SECTION_HEADERS = [

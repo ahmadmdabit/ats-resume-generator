@@ -1,6 +1,6 @@
 import * as fs from 'fs';
-import { IResumeGenerator } from '../core/interfaces';
-import { ResumeData } from '../core/models';
+import { IResumeGenerator } from '../core/interfaces.js';
+import { ResumeData } from '../core/models.js';
 
 export class MarkdownGenerator implements IResumeGenerator {
     async generate(data: ResumeData, outputPath: string): Promise<void> {
