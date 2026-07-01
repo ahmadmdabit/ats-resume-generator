@@ -3,10 +3,16 @@ import { IResumeParser } from '../core/interfaces.js';
 import { ResumeData, ResumeJob, ResumeProject } from '../core/models.js';
 
 export class MarkdownParser implements IResumeParser {
-    private readonly SECTION_HEADERS = [
-        'PROFESSIONAL SUMMARY', 'TECHNICAL SKILLS', 'PROFESSIONAL EXPERIENCE',
-        'PROJECTS', 'EDUCATION', 'CERTIFICATIONS', 'LANGUAGES'
-    ];
+    // Map both English and Turkish headers to internal canonical keys
+    private readonly SECTION_MAP: Record<string, string> = {
+        'PROFESSIONAL SUMMARY': 'SUMMARY', 'PROFESYONEL ÖZET': 'SUMMARY',
+        'TECHNICAL SKILLS': 'SKILLS', 'TEKNİK BECERİLER': 'SKILLS',
+        'PROFESSIONAL EXPERIENCE': 'EXPERIENCE', 'PROFESYONEL DENEYİM': 'EXPERIENCE', 'İŞ DENEYİMİ': 'EXPERIENCE',
+        'PROJECTS': 'PROJECTS', 'PROJELER': 'PROJECTS',
+        'EDUCATION': 'EDUCATION', 'EĞİTİM': 'EDUCATION',
+        'CERTIFICATIONS': 'CERTIFICATIONS', 'SERTİFİKALAR': 'CERTIFICATIONS',
+        'LANGUAGES': 'LANGUAGES', 'DİLLER': 'LANGUAGES'
+    };
 
     private stripInline(text: string): string {
         return text.replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1').trim();
@@ -16,7 +22,7 @@ export class MarkdownParser implements IResumeParser {
         const tokens = marked.lexer(input);
         const data: ResumeData = {
             header: { name: '', email: '', phone: '', address: '', website: '' },
-            summary: [], skills: [], experience: [], projectsIntro: '', projects: [],
+            summary: [], experienceOverview: '', skills: [], experience: [], projectsIntro: '', projects: [],
             education: { degree: '', date: '', institution: '' }, certifications: [], languages: []
         };
 
@@ -24,24 +30,90 @@ export class MarkdownParser implements IResumeParser {
         let currentJob: ResumeJob | null = null;
         let currentProject: ResumeProject | null = null;
 
+        // Buffer for Education section to handle order-independent parsing
+        let eduParagraphs: string[] = [];
+        let eduInstitutionFromList: string = '';
+
         const saveJob = () => { if (currentJob) { data.experience.push(currentJob); currentJob = null; } };
         const saveProject = () => { if (currentProject) { data.projects.push(currentProject); currentProject = null; } };
+
+        const finalizeEducation = () => {
+            if (eduParagraphs.length === 0 && !eduInstitutionFromList) return;
+
+            // 1. Extract Date (most reliable pattern)
+            const dateRegex = /^\d{2}\/\d{4}\s*[–-]\s*(?:\d{2}\/\d{4}|Present|Günümüz|Devam\s+ediyor|Current)$/i;
+            const dateIdx = eduParagraphs.findIndex(p => dateRegex.test(p));
+            if (dateIdx !== -1) {
+                data.education.date = eduParagraphs[dateIdx];
+                eduParagraphs.splice(dateIdx, 1);
+            }
+
+            // 2. Check if Institution was provided as a list item (Common in English template)
+            const hasListInstitution = Boolean(eduInstitutionFromList);
+            if (hasListInstitution) {
+                data.education.institution = eduInstitutionFromList;
+            }
+
+            // 3. Assign remaining paragraphs based on structural context
+            if (hasListInstitution) {
+                // If institution was a list, remaining paragraphs are strictly [Overview, Degree] or just [Degree]
+                if (eduParagraphs.length === 2) {
+                    data.education.overview = eduParagraphs[0];
+                    data.education.degree = eduParagraphs[1];
+                } else if (eduParagraphs.length === 1) {
+                    data.education.degree = eduParagraphs[0];
+                }
+            } else {
+                // If institution was a paragraph (Common in Turkish template), we have up to 3 paragraphs: [Overview, Degree, Institution]
+                if (eduParagraphs.length === 3) {
+                    data.education.overview = eduParagraphs[0];
+                    data.education.degree = eduParagraphs[1];
+                    data.education.institution = eduParagraphs[2];
+                } else if (eduParagraphs.length === 2) {
+                    // Could be [Overview, Degree] OR [Degree, Institution]
+                    // Heuristic: Institution usually contains "University", "College", "Üniversite", "Fakülte"
+                    const isInstitution = (text: string) => /(University|College|Institute|School|Üniversite|Fakülte|Lise)/i.test(text);
+                    if (isInstitution(eduParagraphs[1])) {
+                        data.education.degree = eduParagraphs[0];
+                        data.education.institution = eduParagraphs[1];
+                    } else {
+                        data.education.overview = eduParagraphs[0];
+                        data.education.degree = eduParagraphs[1];
+                    }
+                } else if (eduParagraphs.length === 1) {
+                    data.education.degree = eduParagraphs[0];
+                }
+            }
+
+            // Reset buffer
+            eduParagraphs = [];
+            eduInstitutionFromList = '';
+        };
 
         for (const token of tokens) {
             const text = (token.type === 'heading' || token.type === 'paragraph' || token.type === 'text') ? token.text.trim() : '';
             const rawText = (token as any).raw?.trim() || '';
 
-            if (this.SECTION_HEADERS.includes(text) || this.SECTION_HEADERS.includes(rawText)) {
-                saveJob(); saveProject();
-                section = text.replace('PROFESSIONAL ', '').replace('TECHNICAL ', '');
+            // Check for section headers using the map
+            // We check both the cleaned text and the raw text to catch variations
+            const upperText = text.toUpperCase();
+            const upperRawText = rawText.toUpperCase();
+
+            if (this.SECTION_MAP[upperText] || this.SECTION_MAP[upperRawText]) {
+                saveJob();
+                saveProject();
+                if (section === 'EDUCATION') finalizeEducation(); // Finalize before switching
+                section = this.SECTION_MAP[upperText] || this.SECTION_MAP[upperRawText];
                 continue;
             }
 
             if (token.type === 'list') {
                 const listItems = token.items.map((item: Tokens.ListItem) => item.text.trim()) as string[];
+
                 if (section === 'SKILLS') {
                     listItems.forEach((item: string) => {
                         const clean = this.stripInline(item);
+                        // Matches "Category: Item" or "Kategori: Öğe"
                         const match = clean.match(/^([^:]+):\s*(.+)/);
                         if (match) data.skills.push({ category: match[1].trim(), items: match[2].trim() });
                     });
@@ -49,8 +121,9 @@ export class MarkdownParser implements IResumeParser {
                     currentJob.bullets.push(...listItems.map(i => this.stripInline(i)));
                 } else if (section === 'PROJECTS' && currentProject) {
                     listItems.forEach((item: string) => {
-                        if (/Technologies:/.test(item)) {
-                            currentProject!.tech = item.replace(/^\*{0,2}Technologies:\*{0,2}\s*/, '').trim();
+                        // Support both English "Technologies:" and Turkish "Teknolojiler:"
+                        if (/^\*{0,2}(?:Technologies|Teknolojiler):\*{0,2}/i.test(item)) {
+                            currentProject!.tech = item.replace(/^\*{0,2}(?:Technologies|Teknolojiler):\*{0,2}\s*/i, '').trim();
                         } else {
                             currentProject!.bullets.push(this.stripInline(item));
                         }
@@ -58,7 +131,8 @@ export class MarkdownParser implements IResumeParser {
                 } else if (section === 'CERTIFICATIONS') {
                     listItems.forEach((item: string) => {
                         const clean = this.stripInline(item);
-                        const certLinkMatch = clean.match(/(.+?)\s*\[Reference\]\(([^)]+)\)/);
+                        // Support both English "Reference" and Turkish "Referans"
+                        const certLinkMatch = clean.match(/(.+?)\s*\[(?:Reference|Referans)\]\(([^)]+)\)/i);
                         data.certifications.push(certLinkMatch
                             ? { text: certLinkMatch[1].trim(), link: certLinkMatch[2].trim() }
                             : { text: clean });
@@ -66,7 +140,9 @@ export class MarkdownParser implements IResumeParser {
                 } else if (section === 'LANGUAGES') {
                     data.languages.push(...listItems.map(i => this.stripInline(i)));
                 } else if (section === 'EDUCATION') {
-                    data.education.institution = this.stripInline(listItems[0] || '');
+                    if (!eduInstitutionFromList) {
+                        eduInstitutionFromList = this.stripInline(listItems[0] || '');
+                    }
                 }
                 continue;
             }
@@ -79,10 +155,16 @@ export class MarkdownParser implements IResumeParser {
                         if (!data.header.name && !text.includes(':')) {
                             data.header.name = cleanText;
                         } else {
-                            const emailMatch = text.match(/E-mail:\*{0,2}\s*(\S+)/);
-                            const phoneMatch = text.match(/Phone:\*{0,2}\s*([^\n]+)/);
-                            const addressMatch = text.match(/Address:\*{0,2}\s*([^\n]+)/);
-                            const websiteMatch = text.match(/Website:\*{0,2}\s*([^\n]+)/);
+                            // Support English and Turkish labels
+                            // E-mail / E-posta
+                            const emailMatch = text.match(/(?:E-mail|E-posta):\*{0,2}\s*(\S+)/i);
+                            // Phone / Telefon
+                            const phoneMatch = text.match(/(?:Phone|Telefon):\*{0,2}\s*([^\n]+)/i);
+                            // Address / Adres
+                            const addressMatch = text.match(/(?:Address|Adres):\*{0,2}\s*([^\n]+)/i);
+                            // Website / Web Sitesi
+                            const websiteMatch = text.match(/(?:Website|Web Sitesi|Web sitesi):\*{0,2}\s*([^\n]+)/i);
+
                             if (emailMatch) data.header.email = emailMatch[1].trim();
                             if (phoneMatch) data.header.phone = phoneMatch[1].trim();
                             if (addressMatch) data.header.address = addressMatch[1].trim();
@@ -93,25 +175,42 @@ export class MarkdownParser implements IResumeParser {
                         data.summary.push(cleanText);
                         break;
                     case 'EXPERIENCE':
-                        if (cleanText.match(/^\d{2}\/\d{4}\s*–\s*(Present|\d{2}\/\d{4})$/)) {
-                            // Bug fix: only set date, do NOT call saveJob() here.
-                            // The job must stay alive so the following list token can fill bullets.
+                        // Support "Present", "Günümüz", "Devam ediyor"
+                        // Using /i flag for case-insensitive matching which handles Turkish chars better than toLowerCase()    
+                        if (cleanText.match(/^\d{2}\/\d{4}\s*[–-]\s*(?:Present|Günümüz|Devam\s+ediyor|\d{2}\/\d{4})$/i)) {
                             if (currentJob) { currentJob.date = cleanText; }
                         } else {
-                            const jobMatch = cleanText.match(/^(.+?)\s*-\s*(.+?),\s*(.+)$/);
+                            // Match: Title - Company, Location
+                            const jobMatch = cleanText.match(/^(.+)\s*-\s*(.+?),\s*(.+)$/);
                             if (jobMatch) {
                                 saveJob();
-                                currentJob = { title: jobMatch[1].trim(), company: jobMatch[2].trim(), location: jobMatch[3].trim(), date: '', bullets: [] };
+                                currentJob = {
+                                    title: jobMatch[1].trim(),
+                                    company: jobMatch[2].trim(),
+                                    location: jobMatch[3].trim(),
+                                    date: '',
+                                    bullets: []
+                                };
                             } else if (currentJob) {
                                 currentJob.bullets.push(cleanText);
+                            } else if (!data.experienceOverview) {
+                                data.experienceOverview = cleanText;
                             }
                         }
                         break;
                     case 'PROJECTS':
-                        if (cleanText.toLowerCase().includes('complete portfolio')) {
+                        // FIX: Broader detection for the "Portfolio Intro" sentence.
+                        // Matches EN: "complete portfolio", "full portfolio"
+                        // Matches TR: "tamamı ... web sitesi", "tamamı ... portföy", "tüm çalışmalar"
+                        //const isPortfolioIntro = /(complete|full)\s+portfolio|tamam[ıi].*(web\s+sitesi|portf[öo]y|çalışma)|tüm\s+çalışmalar/i.test(text);
+
+                        // if (isPortfolioIntro) {
+                        if (!data.projectsIntro) {
+                            // FIX: Store the FULL paragraph text (links will be converted by generators).
+                            // Do NOT strip to just link text.
                             data.projectsIntro = text;
-                        } else if (/Technologies:/.test(text)) {
-                            if (currentProject) currentProject.tech = text.replace(/^\*{0,2}Technologies:\*{0,2}\s*/, '').trim();
+                        } else if (/^(?:Technologies|Teknolojiler):/i.test(text)) {
+                            if (currentProject) currentProject.tech = text.replace(/^\*{0,2}(?:Technologies|Teknolojiler):\*{0,2}\s*/i, '').trim();
                         } else {
                             const linkMatch = text.match(/\[([^\]]+)\]\(([^)]+)\)/);
                             if (linkMatch) {
@@ -125,29 +224,36 @@ export class MarkdownParser implements IResumeParser {
                         }
                         break;
                     case 'EDUCATION':
-                        if (!data.education.degree) {
-                            data.education.degree = cleanText;
-                        } else if (cleanText.match(/^\d{2}\/\d{4}\s*–\s*\d{2}\/\d{4}$/)) {
-                            data.education.date = cleanText;
+                        // Buffer paragraphs to be processed intelligently at the end of the section
+                        eduParagraphs.push(cleanText);
+                        break;
+                    case "CERTIFICATIONS": {
+                        // FIX: Handle paragraph-based certs with links (e.g., "- **Cert Name** - [Reference](url)")
+                        const cleanCert = this.stripInline(text);
+                        // Regex handles optional bold markers around name, optional dash, and [Reference|Referans](link)
+                        const certLinkMatch = cleanCert.match(/^\s*-?\s*\*{0,2}(.+?)\*{0,2}\s*-\s*\[(?:Reference|Referans)\]\(([^)]+)\)/i);
+                        if (certLinkMatch) {
+                            data.certifications.push({ text: certLinkMatch[1].trim(), link: certLinkMatch[2].trim() });
                         } else {
-                            data.education.institution = cleanText;
+                            // Fallback for plain text certs
+                            data.certifications.push({ text: cleanCert.replace(/^-\s*/, "") });
                         }
                         break;
-                    case 'CERTIFICATIONS': {
-                        const cleanCert = this.stripInline(text);
-                        const certLinkMatch = cleanCert.match(/(.+?)\s*\[Reference\]\(([^)]+)\)/);
-                        data.certifications.push(certLinkMatch
-                            ? { text: certLinkMatch[1].trim(), link: certLinkMatch[2].trim() }
-                            : { text: cleanCert });
+                    }
+                    case "LANGUAGES": {
+                        // FIX: Handle paragraph-based languages (e.g., "- **Turkish** (Professional)")
+                        // Strip leading dash/bullet if present
+                        const langText = cleanText.replace(/^-\s*/, "");
+                        if (langText) data.languages.push(langText);
                         break;
                     }
-                    case 'LANGUAGES':
-                        data.languages.push(cleanText);
-                        break;
                 }
             }
         }
-        saveJob(); saveProject();
+        saveJob();
+        saveProject();
+        if (section === 'EDUCATION') finalizeEducation(); // Finalize if file ends on Education
+        console.log('PARSING RESULT:', JSON.stringify(data, null, 2));
         return data;
     }
 }

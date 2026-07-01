@@ -1,4 +1,4 @@
-import { IResumeParser, IResumeGenerator } from '../core/interfaces.js';
+import { IResumeParser, IResumeGenerator, LANG } from '../core/interfaces.js';
 
 // Dependency Inversion Principle (DIP): Depends on abstractions
 export class ResumeService {
@@ -7,8 +7,8 @@ export class ResumeService {
         private readonly generator: IResumeGenerator
     ) {}
 
-    async process(input: string, outputPath: string): Promise<void> {
+    async process(input: string, outputPath: string, lang: LANG = 'en'): Promise<void> {
         const data = this.parser.parse(input);
-        await this.generator.generate(data, outputPath);
+        await this.generator.generate(data, outputPath, lang);
     }
 }

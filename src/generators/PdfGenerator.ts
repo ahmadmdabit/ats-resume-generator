@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { resolve, dirname } from 'node:path';
 import { convertToPdf, ConvertError } from 'docx-to-pdf-wasm';
-import { IResumeGenerator } from '../core/interfaces.js';
+import { IResumeGenerator, LANG } from '../core/interfaces.js';
 import { ResumeData } from '../core/models.js';
 import { DocxGenerator } from './DocxGenerator.js';
 
@@ -44,7 +44,7 @@ async function getWasmModule(): Promise<WebAssembly.Module> {
 }
 
 export class PdfGenerator implements IResumeGenerator {
-    async generate(data: ResumeData, outputPath: string): Promise<void> {
+    async generate(data: ResumeData, outputPath: string, lang: LANG = 'en'): Promise<void> {
         const docxPath = outputPath.replace(/\.pdf$/, '.docx');
         const docxGen = new DocxGenerator();
         await docxGen.generate(data, docxPath);

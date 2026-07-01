@@ -9,12 +9,13 @@ export interface ResumeHeader {
 export interface ResumeSkill { category: string; items: string; }
 export interface ResumeJob { title: string; company: string; location: string; date: string; bullets: string[]; }
 export interface ResumeProject { title: string; link: string; subtitle?: string; tech: string; bullets: string[]; }
-export interface ResumeEducation { degree: string; date: string; institution: string; }
+export interface ResumeEducation { degree: string; date: string; institution: string; overview?: string; }
 export interface ResumeCertification { text: string; link?: string; }
 
 export interface ResumeData {
     header: ResumeHeader;
     summary: string[];
+    experienceOverview: string;
     skills: ResumeSkill[];
     experience: ResumeJob[];
     projectsIntro: string;

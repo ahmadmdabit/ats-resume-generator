@@ -1,19 +1,31 @@
 import * as fs from 'fs';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ExternalHyperlink, ShadingType, convertInchesToTwip, UnderlineType } from "docx";
-import { IResumeGenerator } from '../core/interfaces.js';
+import { IResumeGenerator, LANG } from '../core/interfaces.js';
 import { ResumeData } from '../core/models.js';
 
 export class DocxGenerator implements IResumeGenerator {
-    async generate(data: ResumeData, outputPath: string): Promise<void> {
+    async generate(data: ResumeData, outputPath: string, lang: LANG = 'en'): Promise<void> {
+        // Localization Dictionary
+        const t = lang === 'tr' ? {
+            email: 'E-posta', phone: 'Telefon', address: 'Adres', website: 'Web Sitesi',
+            summary: 'PROFESYONEL ÖZET', skills: 'TEKNİK BECERİLER',
+            experience: 'İŞ DENEYİMİ', projects: 'PROJELER',
+            education: 'EĞİTİM', certifications: 'SERTİFİKALAR', languages: 'DİLLER',
+            technologies: 'Teknolojiler', reference: 'Referans',
+            boldRegex: /(Kıdemli Yazılım Geliştirici ve Yazılım Mimarı|Microsoft Sertifikalı,)/
+        } : {
+            email: 'E-mail', phone: 'Phone', address: 'Address', website: 'Website',
+            summary: 'PROFESSIONAL SUMMARY', skills: 'TECHNICAL SKILLS',
+            experience: 'PROFESSIONAL EXPERIENCE', projects: 'PROJECTS',
+            education: 'EDUCATION', certifications: 'CERTIFICATIONS', languages: 'LANGUAGES',
+            technologies: 'Technologies', reference: 'Reference',
+            boldRegex: /(Senior Software Developer and Software Architect|Microsoft Certified,)/
+        };
 
         const doc = new Document({
             styles: {
                 characterStyles: [
-                    {
-                        id: "Hyperlink",
-                        name: "Hyperlink",
-                        run: { color: "4EA72E", underline: { type: UnderlineType.NONE } }
-                    }
+                    { id: "Hyperlink", name: "Hyperlink", run: { color: "4EA72E", underline: { type: UnderlineType.NONE } } }
                 ],
                 default: {
                     document: { run: { font: "Calibri", size: 24 } },
@@ -27,60 +39,74 @@ export class DocxGenerator implements IResumeGenerator {
                 properties: { page: { size: { width: 12240, height: 15840 }, margin: { top: convertInchesToTwip(0.5), right: convertInchesToTwip(0.5), bottom: convertInchesToTwip(0.5), left: convertInchesToTwip(0.5) } } },
                 children: [
                     new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun(data.header.name)] }),
-                    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "E-mail: ", bold: true }), new ExternalHyperlink({ link: `mailto:${data.header.email}`, children: [new TextRun({ text: data.header.email, style: "Hyperlink" })] })] }),
-                    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "Phone: ", bold: true }), new ExternalHyperlink({ link: `tel:${data.header.phone.replace(/\s/g, '')}`, children: [new TextRun({ text: data.header.phone, style: "Hyperlink" })] })] }),
-                    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "Address: ", bold: true }), new TextRun(data.header.address)] }),
-                    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "Website: ", bold: true }), new ExternalHyperlink({ link: data.header.website, children: [new TextRun({ text: data.header.website, style: "Hyperlink" })] })] }),
+                    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `${t.email}: `, bold: true }), new ExternalHyperlink({ link: `mailto:${data.header.email}`, children: [new TextRun({ text: data.header.email, style: "Hyperlink" })] })] }),
+                    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `${t.phone}: `, bold: true }), new ExternalHyperlink({ link: `tel:${data.header.phone.replace(/\s/g, '')}`, children: [new TextRun({ text: data.header.phone, style: "Hyperlink" })] })] }),
+                    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `${t.address}: `, bold: true }), new TextRun(data.header.address)] }),
+                    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `${t.website}: `, bold: true }), new ExternalHyperlink({ link: data.header.website, children: [new TextRun({ text: data.header.website, style: "Hyperlink" })] })] }),
 
-                    new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun("PROFESSIONAL SUMMARY")] }),
+                    new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(t.summary)] }),
                     ...data.summary.map(line => {
-                        const runs = line.split(/(Senior Software Developer and Software Architect|Microsoft Certified,)/).map(part =>
-                            (part === "Senior Software Developer and Software Architect" || part === "Microsoft Certified,")
-                                ? new TextRun({ text: part, bold: true })
-                                : new TextRun(part)
+                        // Robust regex splitting for bold text instead of fragile string equality
+                        const runs = line.split(t.boldRegex).map(part =>
+                            t.boldRegex.test(part) ? new TextRun({ text: part, bold: true }) : new TextRun(part)
                         );
                         return new Paragraph({ spacing: { after: 120 }, children: runs });
                     }),
 
-                    new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun("TECHNICAL SKILLS")] }),
+                    new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(t.skills)] }),
                     ...data.skills.map(s => new Paragraph({ spacing: { after: 40 }, children: [new TextRun("- "), new TextRun({ text: `${s.category}:`, color: "4EA72E", bold: true }), new TextRun(` ${s.items}`)] })),
 
-                    new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun("PROFESSIONAL EXPERIENCE")] }),
+                    new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(t.experience)] }),
+                    ...(data.experienceOverview ? [new Paragraph({ spacing: { after: 120 }, children: [new TextRun({ text: data.experienceOverview })] })] : []),
                     ...data.experience.flatMap(job => [
                         new Paragraph({ heading: HeadingLevel.HEADING_3, children: [new TextRun(`${job.title} - `), new TextRun({ text: job.company, color: "4EA72E" }), new TextRun(`, ${job.location}`)] }),
                         new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { after: 80 }, children: [new TextRun({ text: job.date, italics: true })] }),
                         ...job.bullets.map(b => new Paragraph({ children: [new TextRun(`- ${b}`)], spacing: { after: 40 } }))
                     ]),
 
-                    new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun("PROJECTS")] }),
-                    new Paragraph({ children: (() => { const r: (TextRun | ExternalHyperlink)[] = []; const re = /\[([^\]]+)\]\(([^)]+)\)/g; let l = 0, m: RegExpExecArray | null; while ((m = re.exec(data.projectsIntro)) !== null) { if (m.index > l) r.push(new TextRun(data.projectsIntro.slice(l, m.index))); r.push(new ExternalHyperlink({ link: m[2], children: [new TextRun({ text: m[1], style: "Hyperlink" })] })); l = re.lastIndex; } if (l < data.projectsIntro.length) r.push(new TextRun(data.projectsIntro.slice(l))); return r; })() }),
+                    new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(t.projects)] }),
+                    new Paragraph({
+                        children: (() => {
+                            const r: (TextRun | ExternalHyperlink)[] = [];
+                            const re = /\[([^\]]+)\]\(([^)]+)\)/g;
+                            let l = 0, m: RegExpExecArray | null;
+                            while ((m = re.exec(data.projectsIntro)) !== null) {
+                                if (m.index > l) r.push(new TextRun(data.projectsIntro.slice(l, m.index)));
+                                r.push(new ExternalHyperlink({ link: m[2], children: [new TextRun({ text: m[1], style: "Hyperlink" })] }));
+                                l = re.lastIndex;
+                            }
+                            if (l < data.projectsIntro.length) r.push(new TextRun(data.projectsIntro.slice(l)));
+                            return r;
+                        })()
+                    }),
                     ...data.projects.flatMap(proj => [
                         new Paragraph({ heading: HeadingLevel.HEADING_3, children: [new TextRun(`${proj.title} - `), new ExternalHyperlink({ link: proj.link, children: [new TextRun({ text: proj.link, style: "Hyperlink" })] })] }),
                         ...(proj.subtitle ? [new Paragraph({ children: [new TextRun({ text: proj.subtitle, italics: true })] })] : []),
-                        new Paragraph({ spacing: { after: 40 }, children: [new TextRun("- "), new TextRun({ text: "Technologies:", bold: true }), new TextRun(` ${proj.tech}`)] }),
+                        new Paragraph({ spacing: { after: 40 }, children: [new TextRun("- "), new TextRun({ text: `${t.technologies}: `, bold: true }), new TextRun(` ${proj.tech}`)] }),
                         ...proj.bullets.map(b => new Paragraph({ children: [new TextRun(`- ${b}`)], spacing: { after: 40 } }))
                     ]),
 
-                    new Paragraph({ heading: HeadingLevel.HEADING_2, spacing: { after: 0 }, children: [new TextRun("EDUCATION")] }),
+                    new Paragraph({ heading: HeadingLevel.HEADING_2, spacing: { after: 0 }, children: [new TextRun(t.education)] }),
+                    ...(data.education.overview ? [new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: data.education.overview })] })] : []),
                     new Paragraph({ heading: HeadingLevel.HEADING_3, children: [new TextRun(data.education.degree)] }),
                     new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { after: 80 }, children: [new TextRun({ text: data.education.date, italics: true })] }),
                     new Paragraph({ children: [new TextRun(`- ${data.education.institution}`)] }),
 
-                    new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun("CERTIFICATIONS")] }),
+                    new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(t.certifications)] }),
                     ...data.certifications.map(cert => {
                         const cleanText = cert.link ? cert.text.replace(/\s*-\s*$/, '') : cert.text;
-                        const parts = cleanText.split(/(\(.*?\)|- \d{4}|- Reference)/);
-                        const children = [new TextRun("- "), ...parts.map(p => (p.match(/^\(.*?\)$/) || p.match(/^- \d{4}$/) || p === '- Reference') ? new TextRun(p) : new TextRun({ text: p, bold: true }))];
+                        const parts = cleanText.split(/(\(.*?\)|- \d{4}|- Reference |- Referans)/);
+                        const children = [new TextRun("- "), ...parts.map(p => (p.match(/^\(.*?\)$/) || p.match(/^- \d{4}$/) || p === '- Reference' || p === '- Referans') ? new TextRun(p) : new TextRun({ text: p, bold: true }))];
                         if (cert.link) {
                             children.push(
                                 new TextRun(" - "),
-                                new ExternalHyperlink({ link: cert.link, children: [new TextRun({ text: "Reference", style: "Hyperlink" })] }) as unknown as TextRun
+                                new ExternalHyperlink({ link: cert.link, children: [new TextRun({ text: t.reference, style: "Hyperlink" })] }) as unknown as TextRun
                             );
                         }
                         return new Paragraph({ style: "Compact", children });
                     }),
 
-                    new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun("LANGUAGES")] }),
+                    new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(t.languages)] }),
                     ...data.languages.map(lang => new Paragraph({ style: "Compact", children: [new TextRun(`- ${lang}`)] })),
                 ]
             }]
