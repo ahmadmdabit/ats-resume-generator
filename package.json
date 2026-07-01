@@ -1,6 +1,6 @@
 {
   "name": "ats-resume-generator",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "description": "SOLID Resume Generator (MD/JSON -> MD/DOCX/PDF)",
   "main": "dist/index.js",
   "type": "module",

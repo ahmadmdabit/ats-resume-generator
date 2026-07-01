@@ -134,7 +134,7 @@ export class MarkdownParser implements IResumeParser {
                         // Support both English "Reference" and Turkish "Referans"
                         const certLinkMatch = clean.match(/(.+?)\s*\[(?:Reference|Referans)\]\(([^)]+)\)/i);
                         data.certifications.push(certLinkMatch
-                            ? { text: certLinkMatch[1].trim(), link: certLinkMatch[2].trim() }
+                            ? { text: certLinkMatch[1].trim().replace(/\s*-\s*$/, ''), link: certLinkMatch[2].trim() }
                             : { text: clean });
                     });
                 } else if (section === 'LANGUAGES') {
@@ -199,17 +199,11 @@ export class MarkdownParser implements IResumeParser {
                         }
                         break;
                     case 'PROJECTS':
-                        // FIX: Broader detection for the "Portfolio Intro" sentence.
-                        // Matches EN: "complete portfolio", "full portfolio"
-                        // Matches TR: "tamamı ... web sitesi", "tamamı ... portföy", "tüm çalışmalar"
-                        //const isPortfolioIntro = /(complete|full)\s+portfolio|tamam[ıi].*(web\s+sitesi|portf[öo]y|çalışma)|tüm\s+çalışmalar/i.test(text);
-
-                        // if (isPortfolioIntro) {
                         if (!data.projectsIntro) {
-                            // FIX: Store the FULL paragraph text (links will be converted by generators).
+                            // Store the FULL paragraph text (links will be converted by generators).
                             // Do NOT strip to just link text.
                             data.projectsIntro = text;
-                        } else if (/^(?:Technologies|Teknolojiler):/i.test(text)) {
+                        } else if (/^\*{0,2}(?:Technologies|Teknolojiler):\*{0,2}/i.test(text)) {
                             if (currentProject) currentProject.tech = text.replace(/^\*{0,2}(?:Technologies|Teknolojiler):\*{0,2}\s*/i, '').trim();
                         } else {
                             const linkMatch = text.match(/\[([^\]]+)\]\(([^)]+)\)/);
