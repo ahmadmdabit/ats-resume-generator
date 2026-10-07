@@ -1,6 +1,5 @@
 .yarn
-dist/
-dist-bin/
+dist*/
 build/
 node_modules
 .*/

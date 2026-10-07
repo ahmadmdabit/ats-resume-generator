@@ -1,17 +1,7 @@
 import * as fs from 'fs';
 import { GeneratorOptions, ILayoutGenerator, LANG } from '../core/interfaces.js';
 import { LayoutLine, ResumeLayout } from '../core/models.js';
-
-// Section heading translations: English → Turkish
-const SectionTranslations: Record<string, string> = {
-    'PROFESSIONAL SUMMARY': 'PROFESYONEL ÖZET',
-    'TECHNICAL SKILLS': 'TEKNİK BECERİLER',
-    'PROFESSIONAL EXPERIENCE': 'PROFESYONEL DENEYİM',
-    'PROJECTS': 'PROJELER',
-    'EDUCATION': 'EĞİTİM',
-    'CERTIFICATIONS': 'SERTİFİKALAR',
-    'LANGUAGES': 'DİLLER',
-};
+import { getLocale } from '../i18n/locales.js';
 
 // Renders the layout model as plain text: strips Markdown syntax from the raw
 // source text, preserving line structure, indentation, and blank lines.
@@ -26,7 +16,7 @@ export class TxtGenerator implements ILayoutGenerator {
         if (line.kind === 'blank') return '';
         const pad = ' '.repeat(line.indent);
         const text = line.kind === 'section'
-            ? this.localizeHeading(this.toUpperTr(this.stripInline(line.text)), lang)
+            ? this.localizeHeading(this.toUpperTr(this.stripInline(line.text), lang), lang)
             : this.stripInline(line.text);
         return `${pad}${text}`;
     }
@@ -37,12 +27,8 @@ export class TxtGenerator implements ILayoutGenerator {
     // like 'PROFESSIONAL SUMMARY' must not be affected.
     // We detect Turkish headings by checking if the uppercase version (with
     // Turkish chars restored) matches a known Turkish heading.
-    private static readonly TrHeadingsUpper = new Set([
-        'PROFESYONEL ÖZET', 'TEKNİK BECERİLER', 'PROFESYONEL DENEYİM',
-        'PROJELER', 'EĞİTİM', 'SERTİFİKALAR', 'DİLLER',
-    ]);
-
-    private toUpperTr(text: string): string {
+    private toUpperTr(text: string, lang: LANG): string {
+        const locale = getLocale(lang);
         // Apply Turkish-aware uppercase, then check if the result is a known
         // Turkish heading. If not, fall back to plain toUpperCase().
         const trUpper = text
@@ -54,13 +40,14 @@ export class TxtGenerator implements ILayoutGenerator {
             .replace(/ö/g, 'Ö')
             .replace(/ç/g, 'Ç')
             .toUpperCase();
-        if (TxtGenerator.TrHeadingsUpper.has(trUpper)) return trUpper;
+        if (locale.trHeadingsUpper.has(trUpper)) return trUpper;
         return text.toUpperCase();
     }
 
     private localizeHeading(heading: string, lang: LANG): string {
-        if (lang === 'tr' && SectionTranslations[heading]) {
-            return SectionTranslations[heading];
+        const locale = getLocale(lang);
+        if (lang === 'tr' && locale.sectionHeadings[heading]) {
+            return locale.sectionHeadings[heading];
         }
         return heading;
     }

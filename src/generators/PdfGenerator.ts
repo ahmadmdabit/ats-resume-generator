@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { resolve, dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { convertToPdf, ConvertError } from 'docx-to-pdf-wasm';
-import { IResumeGenerator, LANG } from '../core/interfaces.js';
+import { GeneratorOptions, IResumeGenerator, LANG } from '../core/interfaces.js';
 import { ResumeData } from '../core/models.js';
 import { DocxGenerator } from './DocxGenerator.js';
 
@@ -45,13 +45,13 @@ async function getWasmModule(): Promise<WebAssembly.Module> {
 }
 
 export class PdfGenerator implements IResumeGenerator {
-    async generate(data: ResumeData, outputPath: string, lang: LANG = 'en'): Promise<void> {
+    async generate(data: ResumeData, outputPath: string, lang: LANG = 'en', options?: GeneratorOptions): Promise<void> {
         // Unique temp path: never collides with a user-generated .docx of the same
         // base name, and safe under concurrent runs. Kept in the output directory
         // so the temp file stays on the same volume as the final PDF.
         const docxPath = `${outputPath}.${randomBytes(6).toString('hex')}.tmp.docx`;
         const docxGen = new DocxGenerator();
-        await docxGen.generate(data, docxPath);
+        await docxGen.generate(data, docxPath, lang, options);
 
         const wasmModule = await getWasmModule();
         const docxBytes = new Uint8Array(await readFile(docxPath));

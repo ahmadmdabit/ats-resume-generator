@@ -1,20 +1,14 @@
 import { marked, Tokens } from 'marked';
 import { ILayoutParser, IResumeParser } from '../core/interfaces.js';
 import { LayoutLine, ResumeData, ResumeJob, ResumeLayout, ResumeProject } from '../core/models.js';
+import { getLocale } from '../i18n/locales.js';
 
 export class MarkdownParser implements IResumeParser, ILayoutParser {
-    // Map both English and Turkish headers to internal canonical keys.
+    constructor(private readonly verbose: boolean = false) {}
+    // Section alias map from shared locale module.
     // Keys are pre-normalized (Turkish chars folded, uppercased) so that
     // Title Case headings ("Teknik Beceriler") match reliably.
-    private readonly SectionMap: Record<string, string> = {
-        'PROFESSIONAL SUMMARY': 'SUMMARY', 'PROFESYONEL OZET': 'SUMMARY',
-        'TECHNICAL SKILLS': 'SKILLS', 'TEKNIK BECERILER': 'SKILLS',
-        'PROFESSIONAL EXPERIENCE': 'EXPERIENCE', 'PROFESYONEL DENEYIM': 'EXPERIENCE', 'IS DENEYIMI': 'EXPERIENCE',
-        'PROJECTS': 'PROJECTS', 'PROJELER': 'PROJECTS',
-        'EDUCATION': 'EDUCATION', 'EGITIM': 'EDUCATION',
-        'CERTIFICATIONS': 'CERTIFICATIONS', 'SERTIFIKALAR': 'CERTIFICATIONS', 'SERTIFIKALAR VE LISANSLAR': 'CERTIFICATIONS',
-        'LANGUAGES': 'LANGUAGES', 'DILLER': 'LANGUAGES'
-    };
+    private readonly SectionMap: Record<string, string> = getLocale('en').sectionAliases;
 
     private stripInline(text: string): string {
         return text
@@ -460,7 +454,9 @@ export class MarkdownParser implements IResumeParser, ILayoutParser {
         saveJob();
         saveProject();
         if (section === 'EDUCATION') finalizeEducation(); // Finalize if file ends on Education
-        console.log('PARSING RESULT:', JSON.stringify(data, null, 2));
+        if (this.verbose) {
+            console.log('PARSING RESULT:', JSON.stringify(data, null, 2));
+        }
         return data;
     }
 }

@@ -2,26 +2,27 @@ import * as fs from 'fs';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ExternalHyperlink, ShadingType, convertInchesToTwip, UnderlineType } from "docx";
 import { GeneratorOptions, IResumeGenerator, LANG } from '../core/interfaces.js';
 import { ResumeData } from '../core/models.js';
+import { getLocale } from '../i18n/locales.js';
 
 export class DocxGenerator implements IResumeGenerator {
     async generate(data: ResumeData, outputPath: string, lang: LANG = 'en', options?: GeneratorOptions): Promise<void> {
-        // Localization Dictionary
-        const t = lang === 'tr' ? {
-            email: 'E-posta', phone: 'Telefon', address: 'Adres', website: 'Web Sitesi', linkedin: 'LinkedIn',
-            summary: 'PROFESYONEL ÖZET', skills: 'TEKNİK BECERİLER',
-            experience: 'PROFESYONEL DENEYİM', projects: 'PROJELER',
-            education: 'EĞİTİM', certifications: 'SERTİFİKALAR', languages: 'DİLLER',
-            technologies: 'Teknolojiler', reference: 'Referans',
-            boldRegex: /(Kıdemli Yazılım Geliştirici ve Yazılım Mimarı|Microsoft Sertifikalı,)/,
-            name: 'Ahmet Fatihoğlu', addressValue: 'İstanbul, Türkiye'
-        } : {
-            email: 'E-mail', phone: 'Phone', address: 'Address', website: 'Website', linkedin: 'LinkedIn',
-            summary: 'PROFESSIONAL SUMMARY', skills: 'TECHNICAL SKILLS',
-            experience: 'PROFESSIONAL EXPERIENCE', projects: 'PROJECTS',
-            education: 'EDUCATION', certifications: 'CERTIFICATIONS', languages: 'LANGUAGES',
-            technologies: 'Technologies', reference: 'Reference',
-            boldRegex: /(Senior Software Developer and Software Architect|Microsoft Certified,)/,
-            name: data.header.name, addressValue: data.header.address
+        // Localization from shared locale module
+        const locale = getLocale(lang);
+        const t = {
+            email: locale.fieldLabels.email,
+            phone: locale.fieldLabels.phone,
+            address: locale.fieldLabels.address,
+            website: locale.fieldLabels.website,
+            linkedin: locale.fieldLabels.linkedin,
+            summary: locale.sectionHeadings['PROFESSIONAL SUMMARY'],
+            skills: locale.sectionHeadings['TECHNICAL SKILLS'],
+            experience: locale.sectionHeadings['PROFESSIONAL EXPERIENCE'],
+            projects: locale.sectionHeadings['PROJECTS'],
+            education: locale.sectionHeadings['EDUCATION'],
+            certifications: locale.sectionHeadings['CERTIFICATIONS'],
+            languages: locale.sectionHeadings['LANGUAGES'],
+            technologies: lang === 'tr' ? 'Teknolojiler' : 'Technologies',
+            reference: lang === 'tr' ? 'Referans' : 'Reference',
         };
 
         // C1: blank paragraph to mirror source blank lines (skipped when --no-blank-lines)
@@ -43,9 +44,9 @@ export class DocxGenerator implements IResumeGenerator {
             sections: [{
                 properties: { page: { size: { width: 12240, height: 15840 }, margin: { top: convertInchesToTwip(0.5), right: convertInchesToTwip(0.5), bottom: convertInchesToTwip(0.5), left: convertInchesToTwip(0.5) } } },
                 children: [
-                    new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun(t.name)] }),
+                    new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun(data.header.name)] }),
                     new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `${t.email}: `, bold: true }), new ExternalHyperlink({ link: `mailto:${data.header.email}`, children: [new TextRun({ text: data.header.email, style: "Hyperlink" })] }), new TextRun(' - '), new TextRun({ text: `${t.phone}: `, bold: true }), new ExternalHyperlink({ link: `tel:${data.header.phone.replace(/\s/g, '')}`, children: [new TextRun({ text: data.header.phone, style: "Hyperlink" })] })] }),
-                    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `${t.address}: `, bold: true }), new TextRun(t.addressValue)] }),
+                    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `${t.address}: `, bold: true }), new TextRun(data.header.address)] }),
                     new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `${t.website}: `, bold: true }), new ExternalHyperlink({ link: data.header.website, children: [new TextRun({ text: data.header.website, style: "Hyperlink" })] }), ...(data.header.linkedin ? [new TextRun(' - '), new TextRun({ text: `${t.linkedin}: `, bold: true }), new ExternalHyperlink({ link: data.header.linkedin, children: [new TextRun({ text: data.header.linkedin, style: "Hyperlink" })] })] : [])] }),
                     ...blank(),
 

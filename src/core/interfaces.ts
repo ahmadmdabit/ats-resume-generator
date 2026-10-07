@@ -1,6 +1,6 @@
 import { ResumeData, ResumeLayout } from './models.js';
 
-export type LANG = 'en' | 'tr';
+export type LANG = string;
 
 // Interface Segregation Principle (ISP)
 export interface IResumeParser {

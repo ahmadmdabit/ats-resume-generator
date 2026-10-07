@@ -1,17 +1,7 @@
 import * as fs from 'fs';
 import { GeneratorOptions, ILayoutGenerator, LANG } from '../core/interfaces.js';
 import { LayoutLine, ResumeLayout } from '../core/models.js';
-
-// Section heading translations: English → Turkish
-const SectionTranslations: Record<string, string> = {
-    'PROFESSIONAL SUMMARY': 'PROFESYONEL ÖZET',
-    'TECHNICAL SKILLS': 'TEKNİK BECERİLER',
-    'PROFESSIONAL EXPERIENCE': 'PROFESYONEL DENEYİM',
-    'PROJECTS': 'PROJELER',
-    'EDUCATION': 'EĞİTİM',
-    'CERTIFICATIONS': 'SERTİFİKALAR',
-    'LANGUAGES': 'DİLLER',
-};
+import { getLocale } from '../i18n/locales.js';
 
 // Renders the layout model back to Markdown: emits the raw source text
 // verbatim. The layout model stores the original syntax, so the output is an
@@ -30,8 +20,9 @@ export class MarkdownGenerator implements ILayoutGenerator {
             // Emit H2 heading verbatim (no uppercasing) for exact .md round-trip.
             // Turkish localization: translate the heading text for TR output.
             const raw = line.text.replace(/^##\s+/, '');
-            const localized = lang === 'tr' && SectionTranslations[raw.toUpperCase()]
-                ? SectionTranslations[raw.toUpperCase()]
+            const locale = getLocale(lang);
+            const localized = lang === 'tr' && locale.sectionHeadings[raw.toUpperCase()]
+                ? locale.sectionHeadings[raw.toUpperCase()]
                 : raw;
             return `${pad}## ${localized}`;
         }

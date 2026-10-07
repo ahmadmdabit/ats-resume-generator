@@ -1,0 +1,42 @@
+{
+  "header": {
+    "name": "Test User",
+    "email": "test@example.com",
+    "phone": "123-456-7890",
+    "address": "Test City",
+    "website": "https://example.com",
+    "linkedin": ""
+  },
+  "summary": [
+    "Test summary line"
+  ],
+  "experienceOverview": "",
+  "skills": [
+    {
+      "category": "Languages",
+      "items": "TypeScript, JavaScript"
+    }
+  ],
+  "experience": [
+    {
+      "title": "Dev",
+      "company": "Co",
+      "location": "Remote",
+      "date": "2020-2024",
+      "bullets": [
+        "Did stuff"
+      ]
+    }
+  ],
+  "projectsIntro": "",
+  "projects": [],
+  "education": {
+    "degree": "BSc",
+    "date": "2020",
+    "institution": "Test University"
+  },
+  "certifications": [],
+  "languages": [
+    "English"
+  ]
+}

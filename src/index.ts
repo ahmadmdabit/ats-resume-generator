@@ -8,6 +8,7 @@ import { PdfGenerator } from './generators/PdfGenerator.js';
 import { TxtGenerator } from './generators/TxtGenerator.js';
 import { MarkdownGenerator } from './generators/MarkdownGenerator.js';
 import { GeneratorOptions, ILayoutGenerator, ILayoutParser, IResumeGenerator, IResumeParser, LANG } from './core/interfaces.js';
+import { locales } from './i18n/locales.js';
 
 const USAGE = `Usage: ats-resume-generator <input.(md|json)> [options]
 
@@ -16,6 +17,7 @@ Options:
   -n, --name <list>       Output file name(s) without extension (comma-separated, default: input stem)
   --lang <list>           Language(s): en,tr (comma-separated, required)
   --no-blank-lines        Remove blank paragraphs from DOCX output
+  --verbose              Log parsed resume data to stdout
   --date <yyyy-MM-dd>     Append date to output file name
   -h, --help              Show help message
 
@@ -35,6 +37,7 @@ interface CliOptions {
     langs: LANG[];
     noBlankLines: boolean;
     date: string;
+    verbose: boolean;
     help: boolean;
 }
 
@@ -46,6 +49,7 @@ function parseArgs(argv: string[]): CliOptions {
         langs: [],
         noBlankLines: false,
         date: '',
+        verbose: false,
         help: false,
     };
 
@@ -57,6 +61,8 @@ function parseArgs(argv: string[]): CliOptions {
             opts.help = true;
         } else if (arg === '--no-blank-lines') {
             opts.noBlankLines = true;
+        } else if (arg === '--verbose') {
+            opts.verbose = true;
         } else if (arg === '-f' || arg === '--format') {
             const val = argv[++i];
             if (!val) { console.error('❌ --format requires a value'); process.exit(1); }
@@ -131,10 +137,11 @@ for (const f of opts.formats) {
     }
 }
 
-// Validate langs
+// Validate langs against available locales
+const availableLangs = Object.keys(locales);
 for (const l of opts.langs) {
-    if (l !== 'en' && l !== 'tr') {
-        console.error(`❌ Unsupported language: "${l}". Use en or tr.`);
+    if (!availableLangs.includes(l)) {
+        console.error(`❌ Unsupported language: "${l}". Available: ${availableLangs.join(', ')}`);
         process.exit(1);
     }
 }
@@ -160,7 +167,7 @@ if (opts.names.length === 1 && opts.langs.length > 1) {
 
 // Select parser based on first input extension
 let parser: IResumeParser & ILayoutParser;
-if (firstExt === '.md') parser = new MarkdownParser();
+if (firstExt === '.md') parser = new MarkdownParser(opts.verbose);
 else parser = new JsonParser();
 
 const genOptions: GeneratorOptions = { noBlankLines: opts.noBlankLines };
