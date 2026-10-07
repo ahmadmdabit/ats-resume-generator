@@ -83,19 +83,26 @@ Two processing paths: semantic (DOCX/PDF) and layout (TXT/MD). The parser produc
 ```
 src/
 ├── core/               # Interfaces & data models
-│   ├── interfaces.ts   # IResumeParser, ILayoutParser, IResumeGenerator, ILayoutGenerator
+│   ├── interfaces.ts   # IResumeParser, ILayoutParser, IResumeGenerator, ILayoutGenerator, GeneratorOptions, LANG
 │   └── models.ts       # ResumeData, ResumeLayout, ResumeJob, ResumeProject, etc.
 ├── parsers/            # Input parsers
-│   ├── MarkdownParser.ts   # marked.lexer-based; implements IResumeParser + ILayoutParser
-│   └── JsonParser.ts       # thin JSON.parse wrapper; synthesizes canonical layout
+│   ├── MarkdownParser.ts   # marked.lexer-based; implements IResumeParser + ILayoutParser; consumes ResumeProfile
+│   └── JsonParser.ts       # thin JSON.parse wrapper; synthesizes canonical layout from ResumeData
 ├── generators/         # Output generators
-│   ├── MarkdownGenerator.ts  # ILayoutGenerator — renders ResumeLayout back to Markdown
-│   ├── DocxGenerator.ts      # IResumeGenerator — docx library; Calibri, green theme
+│   ├── MarkdownGenerator.ts  # ILayoutGenerator — renders ResumeLayout back to Markdown (exact round-trip)
+│   ├── DocxGenerator.ts      # IResumeGenerator — docx library; Calibri, green theme (#4EA72E / #3A7C22)
 │   ├── PdfGenerator.ts       # delegates to DocxGenerator → docx-to-pdf-wasm
-│   └── TxtGenerator.ts       # ILayoutGenerator — renders ResumeLayout as plain text
+│   └── TxtGenerator.ts       # ILayoutGenerator — renders ResumeLayout as plain text (strips syntax, uppercases H2)
+├── profiles/           # Per-language grammar configuration
+│   ├── types.ts        # ResumeProfile interface + isResumeProfile type guard
+│   ├── en.ts           # English profile — extracted heuristics
+│   ├── tr.ts           # Turkish profile — extracted heuristics
+│   └── index.ts        # getProfile(lang) registry with English fallback
+├── i18n/               # Shared localization data
+│   └── locales.ts      # Single source of truth for section headings, field labels, section aliases
 ├── services/           # Orchestration
-│   └── ResumeService.ts  # ResumeService (semantic) + LayoutResumeService (layout)
-└── index.ts            # CLI entry — selects path by output extension
+│   └── ResumeService.ts  # ResumeService (semantic: ResumeData → DOCX/PDF) + LayoutResumeService (layout: ResumeLayout → TXT/MD)
+└── index.ts            # CLI entry — selects semantic (.docx/.pdf) or layout (.txt/.md) path by output extension
 ```
 
 ### SOLID Principles Applied
@@ -116,42 +123,76 @@ classDiagram
         <<interface>>
         +parse(input: string): ResumeData
     }
+    class ILayoutParser {
+        <<interface>>
+        +parseLayout(input: string): ResumeLayout
+    }
     class IResumeGenerator {
         <<interface>>
-        +generate(data: ResumeData, outputPath: string): Promise~void~
+        +generate(data: ResumeData, outputPath: string, lang: string, options?: GeneratorOptions): Promise~void~
+    }
+    class ILayoutGenerator {
+        <<interface>>
+        +generateFromLayout(layout: ResumeLayout, outputPath: string, lang: string): Promise~void~
     }
     class MarkdownParser {
+        -verbose: boolean
+        -profile: ResumeProfile
         +parse(input: string): ResumeData
+        +parseLayout(input: string): ResumeLayout
     }
     class JsonParser {
         +parse(input: string): ResumeData
+        +parseLayout(input: string, profile?: ResumeProfile, lang?: string): ResumeLayout
     }
     class MarkdownGenerator {
-        +generate(data: ResumeData, outputPath: string): Promise~void~
+        +generateFromLayout(layout: ResumeLayout, outputPath: string, lang: string): Promise~void~
     }
     class DocxGenerator {
-        +generate(data: ResumeData, outputPath: string): Promise~void~
+        +generate(data: ResumeData, outputPath: string, lang: string, options?: GeneratorOptions): Promise~void~
     }
     class PdfGenerator {
-        +generate(data: ResumeData, outputPath: string): Promise~void~
+        +generate(data: ResumeData, outputPath: string, lang: string, options?: GeneratorOptions): Promise~void~
     }
     class TxtGenerator {
-        +generate(data: ResumeData, outputPath: string): Promise~void~
+        +generateFromLayout(layout: ResumeLayout, outputPath: string, lang: string): Promise~void~
     }
     class ResumeService {
         -parser: IResumeParser
         -generator: IResumeGenerator
-        +process(input: string, outputPath: string): Promise~void~
+        +process(input: string, outputPath: string, lang: string, options?: GeneratorOptions): Promise~void~
+    }
+    class LayoutResumeService {
+        -parser: ILayoutParser
+        -generator: ILayoutGenerator
+        +process(input: string, outputPath: string, lang: string): Promise~void~
+    }
+    class ResumeProfile {
+        <<interface>>
+        +sectionAliases: Record~string, string~
+        +headerLabels: object
+        +datePatterns: RegExp~
+        +institutionKeywords: string~
+        +jobTitlePatterns: RegExp~
+        +projectLabels: object
+        +certReferenceLabels: string~
+        +layoutPatterns: object
     }
 
     IResumeParser <|.. MarkdownParser
     IResumeParser <|.. JsonParser
-    IResumeGenerator <|.. MarkdownGenerator
+    ILayoutParser <|.. MarkdownParser
+    ILayoutParser <|.. JsonParser
     IResumeGenerator <|.. DocxGenerator
     IResumeGenerator <|.. PdfGenerator
-    IResumeGenerator <|.. TxtGenerator
+    ILayoutGenerator <|.. MarkdownGenerator
+    ILayoutGenerator <|.. TxtGenerator
     ResumeService --> IResumeParser
     ResumeService --> IResumeGenerator
+    LayoutResumeService --> ILayoutParser
+    LayoutResumeService --> ILayoutGenerator
+    MarkdownParser --> ResumeProfile
+    JsonParser --> ResumeProfile
 ```
 
 This class diagram clarifies the interface‑based design and dependency injection.
@@ -175,8 +216,10 @@ yarn install
 | Command                        | Description                                                              |
 | ------------------------------ | ------------------------------------------------------------------------ |
 | `yarn build` / `npm run build` | Compile TypeScript source to `./dist/`                                   |
+| `yarn build:test`              | Compile test TypeScript to `./dist-test/`                                |
 | `yarn start`                   | Run `node dist/index.js` (requires build)                                |
 | `yarn generate`                | Run `ts-node src/index.ts` directly (no build needed)                    |
+| `yarn test`                    | Run golden-file test suite (requires `build` + `build:test`)             |
 | `yarn package`                 | Build standalone binaries for all platforms (output: `./build/Release/`) |
 | `yarn package:windows`         | Build a standalone binary for Windows x64 (output: `./build/Release/`)   |
 
@@ -205,6 +248,7 @@ Options:
   --lang <list>           Language(s): en,tr (comma-separated, required)
   --no-blank-lines        Remove blank paragraphs from DOCX output
   --date <yyyy-MM-dd>     Append date to output file name
+  --verbose               Enable verbose logging (PARSING RESULT dump)
   -h, --help              Show help message
 ```
 
@@ -494,12 +538,42 @@ This repository uses GitHub Actions for automated builds and releases:
 1. Implement `IResumeGenerator` (consumes `ResumeData`, for DOCX/PDF) or `ILayoutGenerator` (consumes `ResumeLayout`, for TXT/MD):
    ```ts
    export class MyGenerator implements IResumeGenerator {
-     async generate(data: ResumeData, outputPath: string, lang: LANG, options?: GeneratorOptions): Promise<void> {
+     async generate(data: ResumeData, outputPath: string, lang: string, options?: GeneratorOptions): Promise<void> {
        /* ... */
      }
    }
    ```
 2. Add a new condition in `src/index.ts` for your output extension.
+
+### Adding a New Language
+
+1. Create a new profile file in `src/profiles/` (e.g., `de.ts`):
+   ```ts
+   import { ResumeProfile } from './types.js';
+   import { getLocale } from '../i18n/locales.js';
+
+   export const deProfile: ResumeProfile = {
+     sectionAliases: getLocale('de').sectionAliases,
+     headerLabels: { /* ... */ },
+     datePatterns: [ /* ... */ ],
+     institutionKeywords: [ /* ... */ ],
+     jobTitlePatterns: [ /* ... */ ],
+     projectLabels: { /* ... */ },
+     certReferenceLabels: [ /* ... */ ],
+     layoutPatterns: { /* ... */ },
+   };
+   ```
+2. Register it in `src/profiles/index.ts`:
+   ```ts
+   const profiles: Record<string, ResumeProfile> = {
+     en: enProfile,
+     tr: trProfile,
+     de: deProfile,  // ← add here
+   };
+   ```
+3. Add the language to `src/i18n/locales.ts` (section headings, field labels, section aliases).
+
+No parser or generator code changes needed.
 
 ---
 
@@ -525,7 +599,7 @@ The WASM file for PDF generation (`docx-to-pdf.wasm`) is automatically copied in
 ## Known Limitations
 
 - PDF output depends on a third‑party WASM module; conversion may fail for very complex DOCX layouts.
-- The Markdown parser is opinionated about section heading text and order.
+- The Markdown parser expects sections with specific heading text (configurable via `ResumeProfile`).
 - Hyperlinks in DOCX are styled with a specific green color (`#4EA72E`) and no underline.
 - Standalone binaries built on Windows cannot cross-compile for Linux/macOS reliably (known Bun limitation); build those targets natively or via CI.
 - The `docx-to-pdf.wasm` file must accompany the standalone binary for PDF generation to work.
