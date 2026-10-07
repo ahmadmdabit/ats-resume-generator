@@ -129,7 +129,7 @@ async function captureOrCompare(name: string, format: string, actualPath: string
 test('EN resume — all formats', async () => {
     const formats = ['txt', 'md', 'docx', 'pdf'];
     for (const format of formats) {
-        const outputPath = await runCli('local/Resume-EN.md', 'en', format, `Resume-EN-${format}`);
+        const outputPath = await runCli('.local/resume/Resume-EN.md', 'en', format, `Resume-EN-${format}`);
         await captureOrCompare(`Resume-EN-${format}`, format, outputPath);
     }
 });
@@ -137,7 +137,7 @@ test('EN resume — all formats', async () => {
 test('TR resume — all formats', async () => {
     const formats = ['txt', 'md', 'docx', 'pdf'];
     for (const format of formats) {
-        const outputPath = await runCli('local/Resume-TR.md', 'tr', format, `Resume-TR-${format}`);
+        const outputPath = await runCli('.local/resume/Resume-TR.md', 'tr', format, `Resume-TR-${format}`);
         await captureOrCompare(`Resume-TR-${format}`, format, outputPath);
     }
 });
@@ -165,5 +165,58 @@ test('JSON input — all formats', async () => {
     for (const format of formats) {
         const outputPath = await runCli('test/fixture.json', 'en', format, `fixture-${format}`);
         await captureOrCompare(`fixture-${format}`, format, outputPath);
+    }
+});
+
+test('Profile-driven parsing — custom profile with mock patterns', async () => {
+    // Verify that MarkdownParser consumes a custom ResumeProfile
+    const { MarkdownParser } = await import('../src/parsers/MarkdownParser.js');
+    type ResumeProfile = import('../src/profiles/types.js').ResumeProfile;
+
+    const customProfile: ResumeProfile = {
+        sectionAliases: { 'PROFESSIONAL SUMMARY': 'SUMMARY' },
+        headerLabels: {
+            email: ['E-mail'], phone: ['Phone'], address: ['Address'],
+            website: ['Website'], linkedin: ['LinkedIn'],
+        },
+        datePatterns: [/^\d{4}$/],
+        institutionKeywords: ['University'],
+        jobTitlePatterns: [/^(.+?)\s+@\s+(.+)$/],
+        projectLabels: { tech: ['Tech'], link: ['Link'] },
+        certReferenceLabels: ['Ref'],
+        layoutPatterns: {
+            date: /^\d{4}$/,
+            reference: /^Ref:/i,
+            labeled: /^Link:/i,
+        },
+    };
+
+    const parser = new MarkdownParser(false, customProfile);
+    const input = '# Test User\n\nE-mail: test@example.com\n\n## Professional Summary\n\nTest summary\n';
+    const result = parser.parse(input);
+
+    assert.equal(result.header.name, 'Test User');
+    assert.equal(result.header.email, 'test@example.com');
+    assert.deepEqual(result.summary, ['Test summary']);
+});
+
+test('Profile-driven parsing — hypothetical de fallback', async () => {
+    // Verify that getProfile('de') falls back to English
+    const { getProfile } = await import('../src/profiles/index.js');
+    const profile = getProfile('de');
+
+    // Should fall back to English profile
+    assert.equal(profile.headerLabels.email[0], 'E-mail');
+    assert.equal(profile.institutionKeywords.includes('University'), true);
+});
+
+test('Profile-driven parsing — full golden suite', async () => {
+    // Re-run all golden tests to verify zero regressions
+    const formats = ['txt', 'md', 'docx', 'pdf'];
+    for (const format of formats) {
+        const enPath = await runCli('.local/resume/Resume-EN.md', 'en', format, `Resume-EN-${format}`);
+        await captureOrCompare(`Resume-EN-${format}`, format, enPath);
+        const trPath = await runCli('.local/resume/Resume-TR.md', 'tr', format, `Resume-TR-${format}`);
+        await captureOrCompare(`Resume-TR-${format}`, format, trPath);
     }
 });

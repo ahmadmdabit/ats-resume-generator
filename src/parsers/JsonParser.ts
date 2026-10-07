@@ -1,5 +1,8 @@
 import { ILayoutParser, IResumeParser } from '../core/interfaces.js';
 import { LayoutLine, ResumeData, ResumeLayout } from '../core/models.js';
+import { ResumeProfile } from '../profiles/types.js';
+import { getProfile } from '../profiles/index.js';
+import { getLocale } from '../i18n/locales.js';
 
 export class JsonParser implements IResumeParser, ILayoutParser {
     parse(input: string): ResumeData {
@@ -10,8 +13,10 @@ export class JsonParser implements IResumeParser, ILayoutParser {
     // JSON carries no source layout, so synthesize the canonical shape the
     // Markdown templates use. This keeps a single rendering path in the text
     // generators — no fallback branch, no format-specific special casing.
-    parseLayout(input: string): ResumeLayout {
+    parseLayout(input: string, profile?: ResumeProfile, lang: string = 'en'): ResumeLayout {
         const data = this.parse(input);
+        const p = profile ?? getProfile(lang);
+        const headings = getLocale(lang).sectionHeadings;
         const lines: LayoutLine[] = [];
 
         const push = (kind: LayoutLine['kind'], text: string, indent = 0) =>
@@ -21,28 +26,28 @@ export class JsonParser implements IResumeParser, ILayoutParser {
         // Header
         push('title', data.header.name);
         const contact: string[] = [];
-        if (data.header.email) contact.push(`E-mail: ${data.header.email}`);
-        if (data.header.phone) contact.push(`Phone: ${data.header.phone}`);
+        if (data.header.email) contact.push(`${p.headerLabels.email[0]}: ${data.header.email}`);
+        if (data.header.phone) contact.push(`${p.headerLabels.phone[0]}: ${data.header.phone}`);
         if (contact.length) push('contact', contact.join(' - '));
-        if (data.header.address) push('contact', `Address: ${data.header.address}`);
+        if (data.header.address) push('contact', `${p.headerLabels.address[0]}: ${data.header.address}`);
         const web: string[] = [];
-        if (data.header.website) web.push(`Website: ${data.header.website}`);
-        if (data.header.linkedin) web.push(`LinkedIn: ${data.header.linkedin}`);
+        if (data.header.website) web.push(`${p.headerLabels.website[0]}: ${data.header.website}`);
+        if (data.header.linkedin) web.push(`${p.headerLabels.linkedin[0]}: ${data.header.linkedin}`);
         if (web.length) push('contact', web.join(' - '));
         blank();
 
         // Summary
-        push('section', 'PROFESSIONAL SUMMARY');
+        push('section', headings['PROFESSIONAL SUMMARY'] ?? 'PROFESSIONAL SUMMARY');
         data.summary.forEach(s => push('plain', s));
         blank();
 
         // Skills
-        push('section', 'TECHNICAL SKILLS');
+        push('section', headings['TECHNICAL SKILLS'] ?? 'TECHNICAL SKILLS');
         data.skills.forEach(s => push('bullet', `- ${s.category}: ${s.items}`));
         blank();
 
         // Experience
-        push('section', 'PROFESSIONAL EXPERIENCE');
+        push('section', headings['PROFESSIONAL EXPERIENCE'] ?? 'PROFESSIONAL EXPERIENCE');
         if (data.experienceOverview) { push('plain', data.experienceOverview); blank(); }
         data.experience.forEach(job => {
             push('entry', `${job.title} - ${job.company} - ${job.location}`);
@@ -52,19 +57,19 @@ export class JsonParser implements IResumeParser, ILayoutParser {
         });
 
         // Projects
-        push('section', 'PROJECTS');
+        push('section', headings['PROJECTS'] ?? 'PROJECTS');
         if (data.projectsIntro) { push('plain', data.projectsIntro); blank(); }
         data.projects.forEach(proj => {
             push('entry', proj.title);
             if (proj.link) push('plain', proj.link);
             if (proj.subtitle) push('plain', proj.subtitle);
-            push('labeled', `- Technologies: ${proj.tech}`);
+            push('labeled', `- ${p.projectLabels.tech[0]}: ${proj.tech}`);
             proj.bullets.forEach(b => push('bullet', `- ${b}`));
             blank();
         });
 
         // Education
-        push('section', 'EDUCATION');
+        push('section', headings['EDUCATION'] ?? 'EDUCATION');
         if (data.education.overview) { push('plain', data.education.overview); blank(); }
         push('entry', data.education.degree);
         push('date', data.education.date);
@@ -73,15 +78,15 @@ export class JsonParser implements IResumeParser, ILayoutParser {
         blank();
 
         // Certifications
-        push('section', 'CERTIFICATIONS');
+        push('section', headings['CERTIFICATIONS'] ?? 'CERTIFICATIONS');
         data.certifications.forEach(cert => {
             push('bullet', `- ${cert.text}`);
-            if (cert.link) push('reference', `Reference: ${cert.link}`, 2);
+            if (cert.link) push('reference', `${p.certReferenceLabels[0]}: ${cert.link}`, 2);
         });
         blank();
 
         // Languages
-        push('section', 'LANGUAGES');
+        push('section', headings['LANGUAGES'] ?? 'LANGUAGES');
         data.languages.forEach(l => push('bullet', `- ${l}`));
 
         return { lines };

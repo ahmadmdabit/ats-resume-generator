@@ -9,6 +9,7 @@ import { TxtGenerator } from './generators/TxtGenerator.js';
 import { MarkdownGenerator } from './generators/MarkdownGenerator.js';
 import { GeneratorOptions, ILayoutGenerator, ILayoutParser, IResumeGenerator, IResumeParser, LANG } from './core/interfaces.js';
 import { locales } from './i18n/locales.js';
+import { getProfile } from './profiles/index.js';
 
 const USAGE = `Usage: ats-resume-generator <input.(md|json)> [options]
 
@@ -165,10 +166,11 @@ if (opts.names.length === 1 && opts.langs.length > 1) {
     process.exit(1);
 }
 
-// Select parser based on first input extension
-let parser: IResumeParser & ILayoutParser;
-if (firstExt === '.md') parser = new MarkdownParser(opts.verbose);
-else parser = new JsonParser();
+// Select parser based on first input extension, with per-lang profile
+const makeParser = (lang: LANG): IResumeParser & ILayoutParser => {
+    if (firstExt === '.md') return new MarkdownParser(opts.verbose, getProfile(lang));
+    return new JsonParser();
+};
 
 const genOptions: GeneratorOptions = { noBlankLines: opts.noBlankLines };
 
@@ -188,6 +190,7 @@ for (let li = 0; li < opts.langs.length; li++) {
         outputs.push(outputPath);
 
         let run: Promise<void>;
+        const parser = makeParser(lang);
         if (format === 'txt' || format === 'md') {
             const generator: ILayoutGenerator = format === 'txt' ? new TxtGenerator() : new MarkdownGenerator();
             run = new LayoutResumeService(parser, generator).process(inputContent, outputPath, lang, genOptions);

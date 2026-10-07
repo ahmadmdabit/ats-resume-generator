@@ -1,14 +1,18 @@
 import { marked, Tokens } from 'marked';
 import { ILayoutParser, IResumeParser } from '../core/interfaces.js';
 import { LayoutLine, ResumeData, ResumeJob, ResumeLayout, ResumeProject } from '../core/models.js';
-import { getLocale } from '../i18n/locales.js';
+import { ResumeProfile } from '../profiles/types.js';
+import { getProfile } from '../profiles/index.js';
 
 export class MarkdownParser implements IResumeParser, ILayoutParser {
-    constructor(private readonly verbose: boolean = false) {}
-    // Section alias map from shared locale module.
+    constructor(
+        private readonly verbose: boolean = false,
+        private readonly profile: ResumeProfile = getProfile('en'),
+    ) {}
+    // Section alias map from profile (re-exported from locale module).
     // Keys are pre-normalized (Turkish chars folded, uppercased) so that
     // Title Case headings ("Teknik Beceriler") match reliably.
-    private readonly SectionMap: Record<string, string> = getLocale('en').sectionAliases;
+    private readonly SectionMap: Record<string, string> = this.profile.sectionAliases;
 
     private stripInline(text: string): string {
         return text
@@ -102,7 +106,7 @@ export class MarkdownParser implements IResumeParser, ILayoutParser {
             }
 
             // Indented "Reference: url" line (certifications)
-            if (indent > 0 && /^(?:\*{0,2})?(?:Reference|Referans):/i.test(trimmed)) {
+            if (indent > 0 && this.profile.layoutPatterns.reference.test(trimmed)) {
                 lines.push({ kind: 'reference', text: trimmed, indent });
                 continue;
             }
@@ -111,13 +115,13 @@ export class MarkdownParser implements IResumeParser, ILayoutParser {
             if (/^[-*+]\s+/.test(trimmed)) {
                 const body = trimmed.replace(/^[-*+]\s+/, '');
                 // "- Link: url" / "- Technologies: …" keep their label
-                const kind = /^(?:Link|Bağlantı|Technologies|Teknolojiler):/i.test(body) ? 'labeled' : 'bullet';
+                const kind = this.profile.layoutPatterns.labeled.test(body) ? 'labeled' : 'bullet';
                 lines.push({ kind, text: `- ${body}`, indent: 0 });
                 continue;
             }
 
             // Date / year line
-            if (/^\*{0,2}\d{2}\/\d{4}\s*[–-]\s*(?:\d{2}\/\d{4}|Present|Günümüz|Devam\s+ediyor|Current)\*{0,2}$/i.test(trimmed)
+            if (this.profile.layoutPatterns.date.test(trimmed)
                 || /^\*{0,2}(?:19|20)\d{2}\.?$/i.test(trimmed)) {
                 lines.push({ kind: 'date', text: trimmed, indent: 0 });
                 continue;
@@ -151,8 +155,9 @@ export class MarkdownParser implements IResumeParser, ILayoutParser {
 
         const finalizeEducation = () => {
             // 1. Extract Date (most reliable pattern) — may arrive as a paragraph or a list item
-            const dateRegex = /^\d{2}\/\d{4}\s*[–-]\s*(?:\d{2}\/\d{4}|Present|Günümüz|Devam\s+ediyor|Current)$/i;
-            const dateIdx = eduParagraphs.findIndex(p => dateRegex.test(p));
+            const dateIdx = eduParagraphs.findIndex(p =>
+                this.profile.datePatterns.some(re => re.test(p))
+            );
             if (dateIdx !== -1) {
                 data.education.date = eduParagraphs[dateIdx];
                 eduParagraphs.splice(dateIdx, 1);
@@ -193,8 +198,9 @@ export class MarkdownParser implements IResumeParser, ILayoutParser {
                     data.education.institution = eduParagraphs[2];
                 } else if (eduParagraphs.length === 2) {
                     // Could be [Overview, Degree] OR [Degree, Institution]
-                    // Heuristic: Institution usually contains "University", "College", "Üniversite", "Fakülte"
-                    const isInstitution = (text: string) => /(University|College|Institute|School|Üniversite|Fakülte|Lise)/i.test(text);
+                    // Heuristic: Institution usually contains keywords from profile
+                    const isInstitution = (text: string) =>
+                        this.profile.institutionKeywords.some(kw => text.includes(kw));
                     if (isInstitution(eduParagraphs[1])) {
                         if (!degreeFromHeading) data.education.degree = eduParagraphs[0];
                         data.education.institution = eduParagraphs[1];
@@ -217,7 +223,7 @@ export class MarkdownParser implements IResumeParser, ILayoutParser {
         // into institution / detail / date parts. Returns null when the line is not such a record.
         // `detail` carries the remaining middle segments (faculty, city) so no source text is lost.
         const parseInlineEducation = (line: string): { institution: string; detail: string; date: string } | null => {
-            const dateMatch = line.match(/(\d{2}\/\d{4}\s*[–-]\s*(?:\d{2}\/\d{4}|Present|Günümüz|Devam\s+ediyor|Current)|\b(?:19|20)\d{2}\b\.?)\s*$/i);
+            const dateMatch = line.match(this.profile.datePatterns[2]);
             if (!dateMatch) return null;
             const withoutDate = line.slice(0, dateMatch.index).replace(/\s*[-–]\s*$/, '').trim();
             if (!withoutDate) return null;
@@ -225,7 +231,8 @@ export class MarkdownParser implements IResumeParser, ILayoutParser {
             const parts = withoutDate.split(/\s+[-–]\s+/).map(p => p.trim()).filter(Boolean);
             if (parts.length === 0) return null;
 
-            const isInstitution = (text: string) => /(University|College|Institute|School|Üniversite|Fakülte|Lise)/i.test(text);
+            const isInstitution = (text: string) =>
+                this.profile.institutionKeywords.some(kw => text.includes(kw));
             let institution = '';
             let detail = '';
             if (isInstitution(parts[0])) {
@@ -343,11 +350,11 @@ export class MarkdownParser implements IResumeParser, ILayoutParser {
                         }
                         {
                             // Support English and Turkish labels; fields may share a line separated by " - "
-                            const email = this.extractHeaderField(text, ['E-mail', 'E-posta', 'Email']);
-                            const phone = this.extractHeaderField(text, ['Phone', 'Telefon']);
-                            const address = this.extractHeaderField(text, ['Address', 'Adres']);
-                            const website = this.extractHeaderField(text, ['Website', 'Web Sitesi']);
-                            const linkedin = this.extractHeaderField(text, ['LinkedIn', 'Linkedin']);
+                            const email = this.extractHeaderField(text, this.profile.headerLabels.email);
+                            const phone = this.extractHeaderField(text, this.profile.headerLabels.phone);
+                            const address = this.extractHeaderField(text, this.profile.headerLabels.address);
+                            const website = this.extractHeaderField(text, this.profile.headerLabels.website);
+                            const linkedin = this.extractHeaderField(text, this.profile.headerLabels.linkedin);
 
                             if (email) data.header.email = email;
                             if (phone) data.header.phone = phone;
@@ -363,13 +370,13 @@ export class MarkdownParser implements IResumeParser, ILayoutParser {
                     case 'EXPERIENCE':
                         // Support "Present", "Günümüz", "Devam ediyor"
                         // Using /i flag for case-insensitive matching which handles Turkish chars better than toLowerCase()
-                        if (cleanText.match(/^\d{2}\/\d{4}\s*[–-]\s*(?:Present|Günümüz|Devam\s+ediyor|\d{2}\/\d{4})$/i)) {
+                        if (this.profile.datePatterns.some(re => re.test(cleanText))) {
                             if (currentJob) { currentJob.date = cleanText; }
                         } else {
                             // Match: "Title - Company, Location" (legacy) or "Title - Company - Location" (current)
-                            const dashMatch = cleanText.match(/^(.+?)\s+[-–]\s+(.+?)\s+[-–]\s+(.+)$/);
-                            const commaMatch = cleanText.match(/^(.+?)\s+[-–]\s+(.+?),\s*(.+)$/);
-                            const jobMatch = dashMatch || commaMatch;
+                            const jobMatch = this.profile.jobTitlePatterns
+                                .map(re => cleanText.match(re))
+                                .find(m => m !== null);
                             if (jobMatch) {
                                 saveJob();
                                 currentJob = {
@@ -387,8 +394,8 @@ export class MarkdownParser implements IResumeParser, ILayoutParser {
                         }
                         break;
                     case 'PROJECTS':
-                        if (/^\*{0,2}(?:Technologies|Teknolojiler):\*{0,2}/i.test(text)) {
-                            if (currentProject) currentProject.tech = text.replace(/^\*{0,2}(?:Technologies|Teknolojiler):\*{0,2}\s*/i, '').trim();
+                        if (this.profile.projectLabels.tech.some(l => new RegExp(`^\\*{0,2}${l}:\\*{0,2}`, 'i').test(text))) {
+                            if (currentProject) currentProject.tech = text.replace(new RegExp(`^\\*{0,2}(?:${this.profile.projectLabels.tech.join('|')}):\\*{0,2}\\s*`, 'i'), '').trim();
                         } else if (/^https?:\/\/\S+$/.test(cleanText) && currentProject && !currentProject.link) {
                             // Generated .md emits the project URL as its own paragraph
                             currentProject.link = cleanText;
@@ -426,12 +433,13 @@ export class MarkdownParser implements IResumeParser, ILayoutParser {
                         // FIX: Handle paragraph-based certs with links (e.g., "- **Cert Name** - [Reference](url)")
                         const cleanCert = this.stripInline(text);
                         // Regex handles optional bold markers around name, optional dash, and [Reference|Referans](link)
-                        const certLinkMatch = cleanCert.match(/^\s*-?\s*\*{0,2}(.+?)\*{0,2}\s*[-–]\s*\[(?:Reference|Referans)\]\(([^)]+)\)/i);
+                        const certLabels = this.profile.certReferenceLabels.join('|');
+                        const certLinkMatch = cleanCert.match(new RegExp(`^\\s*-?\\s*\\*{0,2}(.+?)\\*{0,2}\\s*[-–]\\s*\\[(?:${certLabels})\\]\\(([^)]+)\\)`, 'i'));
                         if (certLinkMatch) {
                             data.certifications.push({ text: certLinkMatch[1].trim(), link: certLinkMatch[2].trim() });
                         } else {
                             // Current format: "Reference: https://..." on its own line, attached to the previous cert
-                            const refOnly = cleanCert.match(/^(?:Reference|Referans):\s*(\S+)$/i);
+                            const refOnly = cleanCert.match(new RegExp(`^(?:${certLabels}):\\s*(\\S+)$`, 'i'));
                             if (refOnly && data.certifications.length > 0) {
                                 data.certifications[data.certifications.length - 1].link = refOnly[1].trim();
                             } else {
