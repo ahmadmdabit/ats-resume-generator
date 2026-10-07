@@ -1,8 +1,10 @@
 .yarn
 dist/
+dist-bin/
 build/
 node_modules
-
+.*/
+!.github/
 *.docx
 *.pdf
 *.txt

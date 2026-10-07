@@ -37,12 +37,14 @@ PDF generation requires the `docx-to-pdf.wasm` file to be placed next to the exe
 
 ```bash
 # Windows (Command Prompt)
-ats-resume-generator-windows-x64.exe resume.md resume.docx
+ats-resume-generator-windows-x64.exe resume.md --format docx --name resume --lang en
 
 # Linux / macOS (make executable first)
 chmod +x ats-resume-generator-linux-x64
-./ats-resume-generator-linux-x64 resume.md resume.docx
+./ats-resume-generator-linux-x64 resume.md --format docx --name resume --lang en
 ```
+
+> **Note:** Input and lang counts must match (one input per lang, no fallback). See [Usage](#usage) for multi-language examples.
 
 ---
 
@@ -64,12 +66,15 @@ This project implements a **SOLID‑principled** workflow for resume generation.
 ```mermaid
 flowchart LR
     A[Input File<br>.md / .json] --> B[Parser]
-    B --> C[ResumeData<br>Model]
-    C --> D[Generator]
-    D --> E[Output File<br>.md / .docx / .pdf / .txt]
+    B --> C1[ResumeData<br>Semantic Model]
+    B --> C2[ResumeLayout<br>Layout Model]
+    C1 --> D1[DOCX / PDF<br>Generators]
+    C2 --> D2[TXT / MD<br>Generators]
+    D1 --> E[Output File<br>.docx / .pdf]
+    D2 --> E2[Output File<br>.txt / .md]
 ```
 
-This diagram shows the entire transformation workflow from input to output.
+Two processing paths: semantic (DOCX/PDF) and layout (TXT/MD). The parser produces both models; each generator consumes the one it needs.
 
 ---
 
@@ -78,19 +83,19 @@ This diagram shows the entire transformation workflow from input to output.
 ```
 src/
 ├── core/               # Interfaces & data models
-│   ├── interfaces.ts   # IResumeParser, IResumeGenerator
-│   └── models.ts       # ResumeData, ResumeJob, ResumeProject, etc.
+│   ├── interfaces.ts   # IResumeParser, ILayoutParser, IResumeGenerator, ILayoutGenerator
+│   └── models.ts       # ResumeData, ResumeLayout, ResumeJob, ResumeProject, etc.
 ├── parsers/            # Input parsers
-│   ├── MarkdownParser.ts
-│   └── JsonParser.ts
+│   ├── MarkdownParser.ts   # marked.lexer-based; implements IResumeParser + ILayoutParser
+│   └── JsonParser.ts       # thin JSON.parse wrapper; synthesizes canonical layout
 ├── generators/         # Output generators
-│   ├── MarkdownGenerator.ts
-│   ├── DocxGenerator.ts
-│   ├── PdfGenerator.ts
-│   └── TxtGenerator.ts
+│   ├── MarkdownGenerator.ts  # ILayoutGenerator — renders ResumeLayout back to Markdown
+│   ├── DocxGenerator.ts      # IResumeGenerator — docx library; Calibri, green theme
+│   ├── PdfGenerator.ts       # delegates to DocxGenerator → docx-to-pdf-wasm
+│   └── TxtGenerator.ts       # ILayoutGenerator — renders ResumeLayout as plain text
 ├── services/           # Orchestration
-│   └── ResumeService.ts
-└── index.ts            # CLI entry point
+│   └── ResumeService.ts  # ResumeService (semantic) + LayoutResumeService (layout)
+└── index.ts            # CLI entry — selects path by output extension
 ```
 
 ### SOLID Principles Applied
@@ -100,7 +105,7 @@ src/
 | **Single Responsibility** | Each parser/generator handles exactly one format                                                        |
 | **Open/Closed**           | New parser/generator classes can be added without changing existing ones (CLI entry point needs update) |
 | **Liskov Substitution**   | All parsers/generators are interchangeable                                                              |
-| **Interface Segregation** | `IResumeParser` and `IResumeGenerator` are minimal and focused                                          |
+| **Interface Segregation** | `IResumeParser`/`ILayoutParser` and `IResumeGenerator`/`ILayoutGenerator` are minimal and focused     |
 | **Dependency Inversion**  | `ResumeService` depends on abstractions, not concretions                                                |
 
 #### Class Diagram – SOLID Design
@@ -178,30 +183,58 @@ yarn install
 ### Run (from source)
 
 ```bash
-yarn generate <input.(md|json)> <output.(md|docx|pdf|txt)>
+yarn generate <input.(md|json)> --format <txt,md,docx,pdf> --name <output> --lang <en|tr>
 ```
 
 ### Run (compiled)
 
 ```bash
-yarn start <input.(md|json)> <output.(md|docx|pdf|txt)>
+yarn start <input.(md|json)> --format <txt,md,docx,pdf> --name <output> --lang <en|tr>
 ```
 
 ---
 
-## Usage Example
+## Usage
 
 ```bash
-yarn generate resume.md resume.docx
+ats-resume-generator <input.(md|json)> [options]
+
+Options:
+  -f, --format <list>     Output formats: txt,md,docx,pdf (comma-separated, default: txt)
+  -n, --name <list>       Output file name(s) without extension (comma-separated, default: input stem)
+  --lang <list>           Language(s): en,tr (comma-separated, required)
+  --no-blank-lines        Remove blank paragraphs from DOCX output
+  --date <yyyy-MM-dd>     Append date to output file name
+  -h, --help              Show help message
 ```
 
-This reads `resume.md`, parses it into a `ResumeData` object, and writes a formatted DOCX file.
+The `--lang` argument selects the output language(s) (`en` or `tr`) and is **required**; it controls the section headings and field labels written by every generator. Multiple languages can be specified as a comma-separated list.
+
+**Input and lang counts must match** (one input per lang, no fallback). Provide a comma-separated list of input files, one per language.
+
+The `--name` argument specifies the output file name(s) without extension. When multiple languages are given, each language produces a file named `{name}-{LANG}.{format}` (lang uppercased). If a single name is provided for multiple languages, it is reused for all. The optional `--date` flag appends `--{yyyy-MM-dd}` before the extension.
+
+### Examples
 
 ```bash
-yarn generate resume.json resume.pdf
-```
+# Single format, single language
+ats-resume-generator resume.md --format pdf --name Resume-EN --lang en
 
-Reads JSON input, generates a temporary DOCX, converts it to PDF, and cleans up the temporary file.
+# Batch output (4 files: Resume-EN.txt, Resume-EN.md, Resume-EN.docx, Resume-EN.pdf)
+ats-resume-generator resume.md --format txt,md,docx,pdf --name Resume-EN --lang en
+
+# Multiple languages, one input per lang (2 files: Resume-en.txt, Resume-tr.txt)
+ats-resume-generator en.md,tr.md --format txt --name Resume --lang en,tr
+
+# Multiple languages, multiple names (2 files: A-en.txt, B-tr.txt)
+ats-resume-generator en.md,tr.md --format txt --name A,B --lang en,tr
+
+# Remove blank paragraphs from DOCX output
+ats-resume-generator resume.md --format docx --name Resume-EN --lang en --no-blank-lines
+
+# Show help
+ats-resume-generator --help
+```
 
 ---
 
@@ -210,19 +243,19 @@ Reads JSON input, generates a temporary DOCX, converts it to PDF, and cleans up 
 ```mermaid
 sequenceDiagram
     participant CLI as index.ts
-    participant Service as ResumeService
-    participant Parser as IResumeParser
-    participant Generator as IResumeGenerator
+    participant Service as ResumeService / LayoutResumeService
+    participant Parser as IResumeParser / ILayoutParser
+    participant Generator as IResumeGenerator / ILayoutGenerator
 
-    CLI->>Service: process(input, outputPath)
-    Service->>Parser: parse(input)
-    Parser-->>Service: ResumeData
-    Service->>Generator: generate(data, outputPath)
+    CLI->>Service: process(input, outputPath, lang)
+    Service->>Parser: parse(input) / parseLayout(input)
+    Parser-->>Service: ResumeData / ResumeLayout
+    Service->>Generator: generate(data, outputPath) / generateFromLayout(layout, outputPath)
     Generator-->>Service: (file written)
     Service-->>CLI: (success)
 ```
 
-This shows the runtime interaction between the main entry point, the service, and the pluggable components.
+Two processing paths: semantic (DOCX/PDF) and layout (TXT/MD). `index.ts` selects the path by output extension.
 
 ---
 
@@ -243,12 +276,21 @@ classDiagram
         +certifications: ResumeCertification[]
         +languages: string[]
     }
+    class ResumeLayout {
+        +lines: LayoutLine[]
+    }
+    class LayoutLine {
+        +kind: LayoutLineKind
+        +text: string
+        +indent: number
+    }
     class ResumeHeader {
         +name: string
         +email: string
         +phone: string
         +address: string
         +website: string
+        +linkedin: string
     }
     class ResumeSkill {
         +category: string
@@ -272,6 +314,7 @@ classDiagram
         +degree: string
         +date: string
         +institution: string
+        +detail?: string
     }
     class ResumeCertification {
         +text: string
@@ -284,6 +327,7 @@ classDiagram
     ResumeData --> ResumeProject
     ResumeData --> ResumeEducation
     ResumeData --> ResumeCertification
+    ResumeLayout --> LayoutLine
 ```
 
 This diagram gives a quick visual reference of the data structure used throughout the system.
@@ -381,17 +425,17 @@ The JSON schema mirrors the `ResumeData` interface:
 
 | Format       | Implementation Notes                                                                                       |
 | ------------ | ---------------------------------------------------------------------------------------------------------- |
-| **Markdown** | Plain text with standard Markdown syntax                                                                   |
-| **DOCX**     | Uses `docx` library with custom styles (Calibri, green accents, shaded headings)                           |
+| **Markdown** | ILayoutGenerator — renders ResumeLayout back to Markdown (exact round-trip)                                |
+| **DOCX**     | IResumeGenerator — uses `docx` library with custom styles (Calibri, green accents, shaded headings)        |
 | **PDF**      | Generated via DOCX → PDF conversion using `docx‑to‑pdf‑wasm`; creates and removes a temporary `.docx` file |
-| **TXT**      | Strips all Markdown formatting, converts links to `text (url)`, and uses plain ASCII separators            |
+| **TXT**      | ILayoutGenerator — renders ResumeLayout as plain text (strips Markdown syntax, uppercases H2 headings)     |
 
 ---
 
 ## Technical Constraints
 
 - **PDF Generation:** Requires a WebAssembly module from `docx‑to‑pdf‑wasm`. The module is compiled and cached after first use. In standalone binaries, `docx-to-pdf.wasm` must be placed next to the executable.
-- **Memory:** Temporary DOCX files are created in the same directory as the output PDF and deleted after conversion.
+- **Memory:** Temporary DOCX files use a unique per-run name in the same directory as the output PDF and are deleted after conversion, so they never collide with a user-generated `.docx`.
 - **Node.js Version:** ES2020 modules; requires Node.js 18+.
 - **Package Manager:** Yarn 4.17.0 (see `.yarnrc.yml`).
 - **Bun:** Required only on the build machine for standalone binary generation.
@@ -436,22 +480,21 @@ This repository uses GitHub Actions for automated builds and releases:
 
 ### Adding a New Input Parser
 
-1. Implement `IResumeParser`:
+1. Implement `IResumeParser` (semantic model) and optionally `ILayoutParser` (layout model):
    ```ts
-   export class MyParser implements IResumeParser {
-     parse(input: string): ResumeData {
-       /* ... */
-     }
+   export class MyParser implements IResumeParser, ILayoutParser {
+     parse(input: string): ResumeData { /* ... */ }
+     parseLayout(input: string): ResumeLayout { /* ... */ }
    }
    ```
 2. Add a new condition in `src/index.ts` for your file extension.
 
 ### Adding a New Output Generator
 
-1. Implement `IResumeGenerator`:
+1. Implement `IResumeGenerator` (consumes `ResumeData`, for DOCX/PDF) or `ILayoutGenerator` (consumes `ResumeLayout`, for TXT/MD):
    ```ts
    export class MyGenerator implements IResumeGenerator {
-     async generate(data: ResumeData, outputPath: string): Promise<void> {
+     async generate(data: ResumeData, outputPath: string, lang: LANG, options?: GeneratorOptions): Promise<void> {
        /* ... */
      }
    }

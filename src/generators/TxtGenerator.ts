@@ -1,115 +1,76 @@
 import * as fs from 'fs';
-import { IResumeGenerator, LANG } from '../core/interfaces.js';
-import { ResumeData } from '../core/models.js';
+import { GeneratorOptions, ILayoutGenerator, LANG } from '../core/interfaces.js';
+import { LayoutLine, ResumeLayout } from '../core/models.js';
 
-export class TxtGenerator implements IResumeGenerator {
-    async generate(data: ResumeData, outputPath: string, lang: LANG = 'en'): Promise<void> {
-        const t = lang === 'tr' ? {
-            email: 'E-posta', phone: 'Telefon', address: 'Adres', website: 'Web Sitesi',
-            summary: 'PROFESYONEL ÖZET', skills: 'TEKNİK BECERİLER',
-            experience: 'İŞ DENEYİMİ', projects: 'PROJELER',
-            education: 'EĞİTİM', certifications: 'SERTİFİKALAR', languages: 'DİLLER',
-            technologies: 'Teknolojiler'
-        } : {
-            email: 'E-mail', phone: 'Phone', address: 'Address', website: 'Website',
-            summary: 'PROFESSIONAL SUMMARY', skills: 'TECHNICAL SKILLS',
-            experience: 'PROFESSIONAL EXPERIENCE', projects: 'PROJECTS',
-            education: 'EDUCATION', certifications: 'CERTIFICATIONS', languages: 'LANGUAGES',
-            technologies: 'Technologies'
-        };
+// Section heading translations: English → Turkish
+const SectionTranslations: Record<string, string> = {
+    'PROFESSIONAL SUMMARY': 'PROFESYONEL ÖZET',
+    'TECHNICAL SKILLS': 'TEKNİK BECERİLER',
+    'PROFESSIONAL EXPERIENCE': 'PROFESYONEL DENEYİM',
+    'PROJECTS': 'PROJELER',
+    'EDUCATION': 'EĞİTİM',
+    'CERTIFICATIONS': 'SERTİFİKALAR',
+    'LANGUAGES': 'DİLLER',
+};
 
-        const lines: string[] = [];
-        const stripMarkdown = (text: string): string => {
-            if (!text) return '';
-            return text
-                .replace(/^#+\s+/gm, '') // Remove heading hashes
-                .replace(/\*\*(.*?)\*\*/gs, '$1') // Remove bold **
-                .replace(/__(.*?)__/gs, '$1') // Remove bold __
-                .replace(/(?<!\w)\*(.*?)\*(?!\w)/gs, '$1') // Remove italic *
-                .replace(/(?<!\w)_(.*?)_(?!\w)/gs, '$1') // Remove italic _
-                .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)') // Convert links to text (url)
-                .replace(/`([^`]+)`/g, '$1')  // Remove inline code backticks
-                .trim();
-        };
+// Renders the layout model as plain text: strips Markdown syntax from the raw
+// source text, preserving line structure, indentation, and blank lines.
+export class TxtGenerator implements ILayoutGenerator {
+    async generateFromLayout(layout: ResumeLayout, outputPath: string, lang: LANG = 'en', options?: GeneratorOptions): Promise<void> {
+        void options;
+        const out = layout.lines.map(line => this.render(line, lang)).join('\n');
+        fs.writeFileSync(outputPath, out, 'utf-8');
+    }
 
-        // Header
-        lines.push(`${data.header.name}\n${t.email}: ${data.header.email}\n${t.phone}: ${data.header.phone}\n${t.address}: ${data.header.address}\n${t.website}: ${data.header.website}`);
-        lines.push('');
+    private render(line: LayoutLine, lang: LANG): string {
+        if (line.kind === 'blank') return '';
+        const pad = ' '.repeat(line.indent);
+        const text = line.kind === 'section'
+            ? this.localizeHeading(this.toUpperTr(this.stripInline(line.text)), lang)
+            : this.stripInline(line.text);
+        return `${pad}${text}`;
+    }
 
-        // Summary
-        lines.push(t.summary);
-        data.summary.forEach(line => {
-            lines.push(stripMarkdown(line));
-            lines.push('');
-        });
+    // Turkish-aware toUpperCase. JS toUpperCase() maps 'i'→'I' (not 'İ'),
+    // so 'Teknik Beceriler' becomes 'TEKNIK BECERILER' instead of 'TEKNİK BECERİLER'.
+    // Only apply Turkish replacements for Turkish headings; English headings
+    // like 'PROFESSIONAL SUMMARY' must not be affected.
+    // We detect Turkish headings by checking if the uppercase version (with
+    // Turkish chars restored) matches a known Turkish heading.
+    private static readonly TrHeadingsUpper = new Set([
+        'PROFESYONEL ÖZET', 'TEKNİK BECERİLER', 'PROFESYONEL DENEYİM',
+        'PROJELER', 'EĞİTİM', 'SERTİFİKALAR', 'DİLLER',
+    ]);
 
-        // Skills
-        lines.push(t.skills);
-        data.skills.forEach(s => {
-            lines.push(`${stripMarkdown(s.category)}: ${stripMarkdown(s.items)}`);
-        });
-        lines.push('');
+    private toUpperTr(text: string): string {
+        // Apply Turkish-aware uppercase, then check if the result is a known
+        // Turkish heading. If not, fall back to plain toUpperCase().
+        const trUpper = text
+            .replace(/i/g, 'İ')
+            .replace(/ı/g, 'I')
+            .replace(/ş/g, 'Ş')
+            .replace(/ğ/g, 'Ğ')
+            .replace(/ü/g, 'Ü')
+            .replace(/ö/g, 'Ö')
+            .replace(/ç/g, 'Ç')
+            .toUpperCase();
+        if (TxtGenerator.TrHeadingsUpper.has(trUpper)) return trUpper;
+        return text.toUpperCase();
+    }
 
-        // Experience
-        lines.push(t.experience);
-        if (data.experienceOverview) {
-            lines.push(stripMarkdown(data.experienceOverview));
-            lines.push('');
+    private localizeHeading(heading: string, lang: LANG): string {
+        if (lang === 'tr' && SectionTranslations[heading]) {
+            return SectionTranslations[heading];
         }
-        data.experience.forEach(job => {
-            lines.push(`${stripMarkdown(job.title)} - ${stripMarkdown(job.company)}, ${stripMarkdown(job.location)}`);
-            lines.push(stripMarkdown(job.date));
-            job.bullets.forEach(b => { lines.push(`- ${stripMarkdown(b).replace(/^[-*+]\s*/, '')}`); });
-            lines.push('');
-        });
+        return heading;
+    }
 
-        // Projects
-        lines.push(t.projects);
-        if (data.projectsIntro) {
-            lines.push(stripMarkdown(data.projectsIntro));
-            lines.push('');
-        }
-        data.projects.forEach(proj => {
-            let projHeader = stripMarkdown(proj.title);
-            if (proj.link) projHeader += ` (${stripMarkdown(proj.link)})`;
-            lines.push(projHeader);
-            if (proj.subtitle) lines.push(stripMarkdown(proj.subtitle));
-            lines.push(`${t.technologies}: ${stripMarkdown(proj.tech)}`);
-            proj.bullets.forEach(b => { lines.push(`- ${stripMarkdown(b).replace(/^[-*+]\s*/, '')}`); });
-            lines.push('');
-        });
-
-        // Education
-        // Enforcing correct order: Overview -> Degree -> Date -> Institution
-        lines.push(t.education);
-        if (data.education.overview) {
-            lines.push(stripMarkdown(data.education.overview));
-            lines.push('');
-        }
-        lines.push(stripMarkdown(data.education.degree));
-        lines.push(stripMarkdown(data.education.date));
-        if (data.education.institution) { lines.push(`- ${stripMarkdown(data.education.institution)}`); }
-        lines.push('');
-
-        // Certifications
-        lines.push(t.certifications);
-        data.certifications.forEach((cert) => {
-            let text = stripMarkdown(cert.text); // stripMarkdown handles link conversion
-            if (cert.link) {
-                // stripMarkdown already converted [Ref](url) -> Ref (url), but cert.text might not have the link inline.
-                // If cert.text is "Cert Name" and link is separate, append it.
-                if (!text.includes(cert.link)) text += ` (${stripMarkdown(cert.link)})`;
-            }
-            lines.push(`- ${text}`);
-        });
-        lines.push('');
-
-        // Languages
-        lines.push(t.languages);
-        data.languages.forEach(lang => {
-            lines.push(`- ${stripMarkdown(lang)}`);
-        });
-
-        fs.writeFileSync(outputPath, lines.join('\n'), 'utf-8');
+    private stripInline(text: string): string {
+        return text
+            .replace(/^#{1,6}\s+/, '')                   // heading markers
+            .replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1')   // bold / italic
+            .replace(/`([^`]+)`/g, '$1')                // inline code
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')  // links → text only
+            .trimEnd();
     }
 }
