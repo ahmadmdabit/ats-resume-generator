@@ -132,8 +132,7 @@ export class DocxGenerator implements IResumeGenerator {
                         const result: Paragraph[] = [new Paragraph({ style: "Compact", children })];
                         if (cert.link) {
                             result.push(new Paragraph({
-                                indent: { left: convertInchesToTwip(0.2) },
-                                children: [new TextRun({ text: `${t.reference}: `, bold: true }), new ExternalHyperlink({ link: cert.link, children: [new TextRun({ text: cert.link, style: "Hyperlink" })] })]
+                                children: [new TextRun({ text: `   ${t.reference}: `, bold: true }), new ExternalHyperlink({ link: cert.link, children: [new TextRun({ text: cert.link, style: "Hyperlink" })] })]
                             }));
                         }
                         result.push(...blank());
@@ -143,7 +142,7 @@ export class DocxGenerator implements IResumeGenerator {
                     // Languages
                     new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(t.languages)] }),
                     ...blank(),
-                    ...data.languages.map(lang => new Paragraph({ style: "Compact", children: [new TextRun("- "), new TextRun({ text: lang.replace(/\*\*/g, '').replace(/\(([^)]+)\)/, ''), bold: true }), ...(lang.match(/\(([^)]+)\)/) ? [new TextRun(` (${lang.match(/\(([^)]+)\)/)![1]})`)] : [])] })),
+                    ...data.languages.map(lang => new Paragraph({ style: "Compact", children: [new TextRun("- "), new TextRun({ text: lang.replace(/\*\*/g, '').replace(/\(([^)]+)\)/, '').trim(), bold: true }), ...(lang.match(/\(([^)]+)\)/) ? [new TextRun(` (${lang.match(/\(([^)]+)\)/)![1]})`)] : [])] })),
                 ]
             }]
         });
